@@ -1,5 +1,6 @@
 langchain
 langchain-groq
+langchain-typesafe
 langgraph
 pydantic
 dotenv
