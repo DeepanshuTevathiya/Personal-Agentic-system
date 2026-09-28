@@ -1,7 +1,7 @@
 from langchain_core.tools import tool
 from pydantic import BaseModel
 from typing import Optional
-from datetime import datetime
+from datetime import date
 from app.database.db import db_log_workout
 
 #WORKOUT TOOL ----------------------------------------------------------------------------------
@@ -10,12 +10,12 @@ class WorkoutInput(BaseModel):
      workout_duration: Optional[int] = None
      calories_burned: Optional[int] = None
      workout_notes: Optional[str] = None
-     workout_date: Optional[datetime] = None
+     workout_date: Optional[date] = None
 
 @tool
 def log_workout(user_id: int, workout: WorkoutInput):
     """Log Workout session in database."""
-    workout.workout_date = workout.workout_date or datetime.now()
+    workout.workout_date = workout.workout_date or date.today()
 
     result = db_log_workout(
         user_id =  user_id,

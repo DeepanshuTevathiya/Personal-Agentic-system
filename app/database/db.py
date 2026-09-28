@@ -15,7 +15,7 @@ def db_log_workout(
         "duration_minutes": workout_duration,
         "calories_burned": calories_burned,
         "notes": workout_notes,
-        "workout_date": workout_date.isoformat()
+        "workout_date": workout_date
     }
 
     result = supabase.table("workouts").insert(data).execute()
