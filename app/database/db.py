@@ -1,8 +1,7 @@
-from 
+from app.database.config import supabase
 
-
-def log_workout(
-        db,
+# LOG WORKOUT SESSION
+def db_log_workout(
         user_id: int,
         workout_type: str,
         workout_duration: int | None,
@@ -16,9 +15,9 @@ def log_workout(
         "duration_minutes": workout_duration,
         "calories_burned": calories_burned,
         "notes": workout_notes,
-        "workout_date": workout_date
+        "workout_date": workout_date.isoformat()
     }
 
-    result = db.table("workouts").insert(data).execute()
+    result = supabase.table("workouts").insert(data).execute()
 
     return result.data
