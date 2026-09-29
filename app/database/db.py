@@ -19,5 +19,23 @@ def db_log_workout(
     }
 
     result = supabase.table("workouts").insert(data).execute()
+    return result.data
 
+# LOG MEAL DATA
+def db_log_meal(
+        user_id: int,
+        meal_type: str,
+        description: str | None,
+        calories: int | None,
+        meal_date
+):
+    data = {
+        "user_id": user_id,
+        "meal_type": meal_type,
+        "description": description,
+        "calories": calories,
+        "meal_date": meal_date.isoformat()
+    }
+
+    result = supabase.table("meals").insert(data).execute()
     return result.data

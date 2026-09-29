@@ -24,8 +24,8 @@ def should_continue(state: AssistantState):
         return "tools"
     return "end"
 
-#Tool Node
-tool_node = ToolNode([log_workout])
+# #Tool Node
+# tool_node = ToolNode([log_workout])
 
 
 def productivity_node(state: AssistantState):

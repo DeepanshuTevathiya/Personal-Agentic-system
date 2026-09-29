@@ -3,7 +3,7 @@ from langgraph.prebuilt import InjectedState
 from pydantic import BaseModel
 from typing import Optional, Annotated
 from datetime import date
-from app.database.db import db_log_workout
+from app.database.db import db_log_workout, db_log_meal
 
 #WORKOUT TOOL ----------------------------------------------------------------------------------
 class WorkoutInput(BaseModel):
@@ -18,6 +18,7 @@ def log_workout(
     workout: WorkoutInput,
     user_id: Annotated[int, InjectedState("user_id")]
     ):
+
     """Log Workout session in database."""
     workout.workout_date = workout.workout_date or date.today()
 
@@ -33,14 +34,40 @@ def log_workout(
     
     return{
         "status": "success",
-        "message": "workout logged successfully.",
+        "message": "Workout Logged Successfully.",
         "data": result
     }
 
 #MEAL TOOL ----------------------------------------------------------------------------------
+class MealInput(BaseModel):
+        meal_type: str
+        meal_description: Optional[str] = None
+        calories_gain: Optional[int] = None
+        meal_date: Optional[date] = None
+
 @tool
-def log_meal():
-    "Log meal in database."
+def log_meal(
+     meal: MealInput,
+     user_id: Annotated[int, InjectedState("user_id")] 
+):
+    """Log meal data in database."""
+    meal.meal_date = meal.meal_date or date.today()
+
+    result = db_log_meal(
+         user_id = user_id,
+         meal_type = meal.meal_type,
+         description = meal.meal_description,
+         calories = meal.calories_gain,
+         meal_date = meal.meal_date
+    )
+
+    return{
+         "status": "success",
+         "message": "Meal Logged Successfully",
+         "data": result
+    }
+
+
 
 #SLEEP TOOL ----------------------------------------------------------------------------------
 @tool
