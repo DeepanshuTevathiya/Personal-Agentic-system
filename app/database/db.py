@@ -58,3 +58,22 @@ def db_log_sleep(
 
     result = supabase.table("sleep_logs").insert(data).execute()
     return result.data
+
+# STORE EMBEDDING DATA
+def db_store_memory(
+        user_id: int,
+        source_type: str,
+        source_id: int,
+        content: str,
+        embedding: list
+):
+    data = {
+        "user_id": user_id,
+        "source_type": source_type,
+        "source_id": source_id,
+        "content": content,
+        "embedding": embedding
+    }
+
+    result = supabase.table("memories").insert(data).execute()
+    return result.data
