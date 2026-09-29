@@ -3,7 +3,7 @@ from langgraph.prebuilt import InjectedState
 from pydantic import BaseModel
 from typing import Optional, Annotated
 from datetime import date
-from app.database.db import db_log_workout, db_log_meal
+from app.database.db import db_log_workout, db_log_meal, db_log_sleep
 
 #WORKOUT TOOL ----------------------------------------------------------------------------------
 class WorkoutInput(BaseModel):
@@ -70,11 +70,36 @@ def log_meal(
 
 
 #SLEEP TOOL ----------------------------------------------------------------------------------
+class SleepInput(BaseModel):
+     sleep_date: Optional[date] = None
+     sleep_hour: int
+     sleep_quality: Optional[str] = None
+     notes: Optional[str] = None
+
 @tool
-def log_sleep():
-    "Log sleep in database."
+def log_sleep(
+     sleep: SleepInput,
+     user_id: Annotated[int, InjectedState("user_id")]
+):
+    """Log sleep info in database."""
+    sleep.sleep_date = sleep.sleep_date or date.today()
+
+    result =  db_log_sleep(
+         user_id = user_id,
+         sleep_date = sleep.sleep_date,
+         sleep_hours = sleep.sleep_hour,
+         sleep_quality = sleep.sleep_quality,
+         notes = sleep.notes
+    )
+
+    return {
+         "state": "success",
+         "message": "Sleep Loged Successfully",
+         "data": result
+    }
 
 
-@tool
-def retrieve_health_data():
-    "Retrieve healtyh data from database."
+
+# @tool
+# def retrieve_health_data():
+#     "Retrieve healtyh data from database."

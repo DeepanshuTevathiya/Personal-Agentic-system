@@ -1,12 +1,12 @@
 from langchain.agents import create_agent
 from app.graph.routing import get_llm
-from app.tools.health_tools import log_workout, log_meal
+from app.tools.health_tools import log_workout, log_meal, log_sleep
 
 # Need to modify!!! -- need system prompt also 
 def get_health_agent():
     llm = get_llm()
 
-    health_agent = llm.bind_tools([log_workout, log_meal])
+    health_agent = llm.bind_tools([log_workout, log_meal, log_sleep])
     return health_agent
 
 # -- If yesterday the last day date should be stored

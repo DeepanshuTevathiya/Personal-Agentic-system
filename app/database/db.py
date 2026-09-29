@@ -39,3 +39,22 @@ def db_log_meal(
 
     result = supabase.table("meals").insert(data).execute()
     return result.data
+
+# LOG SLEEP DATA
+def db_log_sleep(
+        user_id: int,
+        sleep_date,
+        sleep_hours: int,
+        sleep_quality: str | None,
+        notes: str | None
+):
+    data = {
+        "user_id": user_id,
+        "sleep_date": sleep_date.isoformat(),
+        "sleep_hours": sleep_hours,
+        "sleep_quality": sleep_quality,
+        "notes": notes
+    }
+
+    result = supabase.table("sleep_logs").insert(data).execute()
+    return result.data

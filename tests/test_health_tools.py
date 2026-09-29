@@ -1,4 +1,4 @@
-from app.tools.health_tools import log_workout, log_meal
+from app.tools.health_tools import log_workout, log_meal, log_sleep
 
 #WORKOUT TESTING --------------------------
 # workout_result = log_workout.invoke({
@@ -14,12 +14,27 @@ from app.tools.health_tools import log_workout, log_meal
 
 
 #MEAL TESTING --------------------------
-meal_result = log_meal.invoke({
+# meal_result = log_meal.invoke({
+#     "user_id": 1,
+#     "meal": {
+#         "meal_type": "lunch",
+#         "description": "Chicken and rice",
+#         "calories": 600,
+#     }
+# })
+# print(meal_result)
+
+#SLEEP TESTING
+# SLEEP TESTING --------------------------
+
+sleep_result = log_sleep.invoke({
     "user_id": 1,
-    "meal": {
-        "meal_type": "lunch",
-        "description": "Chicken and rice",
-        "calories": 600,
+    "sleep": {
+        "sleep_date": "2026-09-29",
+        "sleep_hour": 7,
+        "sleep_quality": "Good",
+        "notes": "Slept well"
     }
 })
-print(meal_result)
+
+print(sleep_result)
