@@ -5,3 +5,4 @@ langgraph
 pydantic
 dotenv
 supabase
+rich

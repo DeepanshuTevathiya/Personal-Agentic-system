@@ -1,6 +1,7 @@
 from langchain_core.tools import tool
+from langgraph.prebuilt import InjectedState
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Annotated
 from datetime import date
 from app.database.db import db_log_workout
 
@@ -13,10 +14,14 @@ class WorkoutInput(BaseModel):
      workout_date: Optional[date] = None
 
 @tool
-def log_workout(user_id: int, workout: WorkoutInput):
+def log_workout(
+    workout: WorkoutInput,
+    user_id: Annotated[int, InjectedState("user_id")]
+    ):
     """Log Workout session in database."""
     workout.workout_date = workout.workout_date or date.today()
 
+    #logs in db
     result = db_log_workout(
         user_id =  user_id,
         workout_type = workout.workout_type,

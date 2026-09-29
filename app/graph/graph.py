@@ -1,28 +1,44 @@
-from state import AssistantState
-from node import route_node
 from langgraph.graph import StateGraph, START, END
+from langgraph.prebuilt import ToolNode
+from rich import print
+
+from app.graph.state import AssistantState
 from langchain_core.messages import HumanMessage
+from app.graph.node import route_node, health_node, should_continue
+from app.tools.health_tools import log_workout
 
 def build_assit_graph():
     graph = StateGraph(AssistantState)
 
     graph.add_node("route", route_node)
+    graph.add_node("health", health_node)
+    graph.add_node("tools", ToolNode([log_workout])) #-> LOGs IN DB
 
     graph.add_edge(START, "route")
-    graph.add_edge("route", END)
+    graph.add_edge("route", "health")
+    graph.add_conditional_edges(
+        "health",
+        should_continue,
+        {
+            "tools": "tools",
+            "end": END
+        }
+    )
+    graph.add_edge("tools", "health")
 
-    graph = graph.compile()
-    return graph
+    return graph.compile()
 
 
 graph = build_assit_graph()
 
 config = {"configurable":{"thread_id":"1"}}
 state = graph.invoke(
-    {
-        "user_id": 1,
-        "messages": [HumanMessage(content="Show me my sleep pattern")]
-    },
+    AssistantState(
+        user_id=1,
+        messages=[
+            HumanMessage(content="I went running for 30 minutes today.")
+        ]
+    ),
     config=config
 )
 
