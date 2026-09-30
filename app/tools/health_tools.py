@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from typing import Optional, Annotated
 from datetime import date
 from app.database.db import db_log_workout, db_log_meal, db_log_sleep
+from app.memory.memory import retrieve_memories
 
 #WORKOUT TOOL ----------------------------------------------------------------------------------
 class WorkoutInput(BaseModel):
@@ -98,8 +99,24 @@ def log_sleep(
          "data": result
     }
 
+# RETRIVLE
+# EXPOSING RETRIEVE DATA TO THE HEALTH AGENT---------------------------------------------------
 
+@tool
+def retrieve_health_data(
+     query: str,
+     user_id: Annotated[int, InjectedState("user_id")]
+):
+    """Retrieve relevant health data from memory."""
 
-# @tool
-# def retrieve_health_data():
-#     "Retrieve healtyh data from database."
+    result = retrieve_memories(
+         user_id=user_id,
+         query=query,
+         top_k=5
+    )
+
+    return {
+         "status": "success",
+         "data": result
+    }
+

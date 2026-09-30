@@ -5,14 +5,14 @@ from rich import print
 from app.graph.state import AssistantState
 from langchain_core.messages import HumanMessage
 from app.graph.node import route_node, health_node, should_continue
-from app.tools.health_tools import log_workout, log_meal, log_sleep
+from app.tools.health_tools import log_workout, log_meal, log_sleep, retrieve_health_data
 
 def build_assit_graph():
     graph = StateGraph(AssistantState)
 
     graph.add_node("route", route_node)
     graph.add_node("health", health_node) # generate tool call msg from user msg.
-    graph.add_node("tools", ToolNode([log_workout, log_meal, log_sleep])) #-> LOGs IN DB
+    graph.add_node("tools", ToolNode([log_workout, log_meal, log_sleep, retrieve_health_data])) #-> LOGs IN DB
 
     graph.add_edge(START, "route")
     graph.add_edge("route", "health")
@@ -36,7 +36,7 @@ state = graph.invoke(
     AssistantState(
         user_id=1,
         messages=[
-            HumanMessage(content="Today I seep poorly only 4 hrs.")
+            HumanMessage(content="What workout i did recenty?")
         ]
     ),
     config=config
