@@ -7,6 +7,9 @@ from langchain_core.messages import HumanMessage
 from app.graph.node import route_node, health_node, should_continue
 from app.tools.health_tools import log_workout, log_meal, log_sleep, retrieve_health_data
 
+from dotenv import load_dotenv
+load_dotenv()
+
 def build_assit_graph():
     graph = StateGraph(AssistantState)
 
@@ -36,7 +39,7 @@ state = graph.invoke(
     AssistantState(
         user_id=1,
         messages=[
-            HumanMessage(content="What workout i did recenty?")
+            HumanMessage(content="Slept 7 hr today")
         ]
     ),
     config=config

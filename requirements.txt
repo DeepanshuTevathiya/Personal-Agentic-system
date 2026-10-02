@@ -7,3 +7,4 @@ dotenv
 supabase
 rich
 sentence_transformers
+langsmith

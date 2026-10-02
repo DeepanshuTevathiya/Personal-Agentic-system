@@ -13,3 +13,4 @@ def get_health_agent():
 # -- Annotate the workout type and meal type.
 # -- [user messages] -  history need to be fixed, may take a log of token by llm
 # -- faster retrival
+# -- maybe log study also

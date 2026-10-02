@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from typing import Optional, Annotated
 from datetime import date
 from app.database.db import db_log_workout, db_log_meal, db_log_sleep
-from app.memory.memory import retrieve_memories
+from app.memory.memory import retrieve_memories, store_memory
 
 #WORKOUT TOOL ----------------------------------------------------------------------------------
 class WorkoutInput(BaseModel):
@@ -32,6 +32,24 @@ def log_workout(
         workout_notes = workout.workout_notes,
         workout_date = workout.workout_date
     )
+
+    # Saving to memory table
+    workout_id = result[0]["id"]
+
+    memory_content = (
+         f"Workout: {workout.workout_type}."
+         f"Duration: {workout.workout_duration} minutes."
+         f"Calories Burnned: {workout.calories_burned}"
+         f"Notes: {workout.workout_notes}"
+         f"Date: {workout.workout_date}"
+    )
+
+    store_memory(
+         user_id=user_id,
+         source_type="workouts",
+         source_id=workout_id,
+         content=memory_content
+     )
     
     return{
         "status": "success",
@@ -61,6 +79,23 @@ def log_meal(
          calories = meal.calories_gain,
          meal_date = meal.meal_date
     )
+
+    #Store in memory
+    meal_id = result[0]["id"]
+
+    memory_content = (
+         f"Meal: {meal.meal_type}. "
+         f"Description: {meal.meal_description}. "
+         f"Calories: {meal.calories_gain}. "
+         f"Date: {meal.meal_date}."
+     )
+
+    store_memory(
+         user_id=user_id,
+         source_type="meals",
+         source_id=meal_id,
+         content=memory_content
+     )
 
     return{
          "status": "success",
@@ -92,6 +127,23 @@ def log_sleep(
          sleep_quality = sleep.sleep_quality,
          notes = sleep.notes
     )
+
+    # Store in memory
+    sleep_id = result[0]["id"]
+
+    memory_content = (
+        f"Sleep: {sleep.sleep_hour} hours. "
+        f"Quality: {sleep.sleep_quality}. "
+        f"Notes: {sleep.notes}. "
+        f"Date: {sleep.sleep_date}."
+     )
+
+    store_memory(
+         user_id=user_id,
+         source_type="sleep_logs",
+         source_id=sleep_id,
+         content=memory_content
+     )
 
     return {
          "state": "success",
