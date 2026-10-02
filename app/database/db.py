@@ -1,5 +1,6 @@
 from app.database.config import supabase
 
+#--------------------------------------- HEALTH -----------------------------------------------
 # LOG WORKOUT SESSION
 def db_log_workout(
         user_id: int,
@@ -76,4 +77,30 @@ def db_store_memory(
     }
 
     result = supabase.table("memories").insert(data).execute()
+    return result.data
+
+#--------------------------------------- PRODUCTIVITY --------------------------------------------
+
+def db_habit_tool(
+        user_id: int,
+        name: str,
+        description: str | None,
+        frequency: str,
+        target_count: int,
+        current_streak: int,
+        longest_streak: int,
+        is_active: bool
+):
+    data = {
+        "user_id":user_id,
+        "name":name,
+        "description":description,
+        "frequency":frequency,
+        "target_count":target_count,
+        "current_streak":current_streak,
+        "longest_streak":longest_streak,
+        "is_active":is_active
+    }
+
+    result = supabase.table("habits").insert(data).execute()
     return result.data
