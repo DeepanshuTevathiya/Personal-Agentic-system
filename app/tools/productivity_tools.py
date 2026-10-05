@@ -3,7 +3,7 @@ from langgraph.prebuilt import InjectedState
 from typing import Annotated, Optional
 from pydantic import BaseModel
 from datetime import date, datetime
-from app.database.db import db_habit_tool, db_task_tool, db_complete_task
+from app.database.db import db_habit_tool, db_task_tool, db_complete_task, db_get_tasks
 
 
 # === Habit tool ===
@@ -73,8 +73,8 @@ def task_tool(
 # === Update Task ===
 @tool
 def complete_task(
-    user_id: Annotated[int, InjectedState("user_id")],
-    task_id: int = 27
+    task_id: int,
+    user_id: Annotated[int, InjectedState("user_id")]
 ):
     """Mark an existing task as completed."""
 
@@ -88,3 +88,18 @@ def complete_task(
         "message": "Task completed successfully",
         "data": result
     }
+
+# == Get Tasks ==
+@tool
+def get_tasks(
+    user_id: Annotated[int, InjectedState("user_id")]
+):
+    """Get all tasks belonging to the current user."""
+
+    result = db_get_tasks(user_id)
+
+    return {
+        "status": "success",
+        "data": result
+    }
+

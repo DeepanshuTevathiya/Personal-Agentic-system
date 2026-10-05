@@ -1,5 +1,5 @@
 from app.graph.routing import get_llm
-from app.tools.productivity_tools import habit_tool, task_tool, complete_task
+from app.tools.productivity_tools import habit_tool, task_tool, complete_task, get_tasks
 from langchain_core.prompts import ChatPromptTemplate
 
 productivity_prompt = ChatPromptTemplate.from_messages([
@@ -17,7 +17,7 @@ productivity_prompt = ChatPromptTemplate.from_messages([
 def get_productivity_agent():
     llm = get_llm()
 
-    productivity_agent = llm.bind_tools([habit_tool, task_tool, complete_task])
+    productivity_agent = llm.bind_tools([habit_tool, task_tool, complete_task, get_tasks])
     return productivity_agent
 
 # productivity_agent = productivity_prompt | get_productivity_agent()

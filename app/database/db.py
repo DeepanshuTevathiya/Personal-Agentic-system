@@ -135,3 +135,8 @@ def db_complete_task(task_id: int, user_id: int):
 
     result = supabase.table("tasks").update(data).eq("id", task_id).eq("user_id", user_id).execute()
     return result.data
+
+# Get Task
+def db_get_tasks(user_id: int):
+    result = supabase.table("tasks").select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
+    return result.data
