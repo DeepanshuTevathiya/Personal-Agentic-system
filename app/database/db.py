@@ -1,5 +1,5 @@
 from app.database.config import supabase
-
+from datetime import datetime
 #--------------------------------------- HEALTH -----------------------------------------------
 # LOG WORKOUT SESSION
 def db_log_workout(
@@ -103,4 +103,35 @@ def db_habit_tool(
     }
 
     result = supabase.table("habits").insert(data).execute()
+    return result.data
+
+# Create task
+def db_task_tool(
+        user_id: int,
+        title: str,
+        description: str | None,
+        status: str,
+        priority: str,
+        due_date
+):
+    data = {
+        "user_id": user_id,
+        "title": title,
+        "description": description,
+        "status": status,
+        "priority": priority,
+        "due_date": due_date.isoformat()
+    }
+
+    result = supabase.table("tasks").insert(data).execute()
+    return result.data
+
+# Update task
+def db_complete_task(task_id: int, user_id: int):
+    data = {
+        "status": "completed",
+        "completed_at": datetime.now().isoformat()
+    }
+
+    result = supabase.table("tasks").update(data).eq("id", task_id).eq("user_id", user_id).execute()
     return result.data
