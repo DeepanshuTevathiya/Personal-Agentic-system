@@ -79,6 +79,22 @@ def db_store_memory(
     result = supabase.table("memories").insert(data).execute()
     return result.data
 
+# UPDATE CONTENT IN MEMORY TABLE
+def db_update_memory(
+        user_id: int,
+        source_type: str,
+        source_id: int,
+        content: str,
+        embedding: list[float]
+):
+    data = {
+        "content": content,
+        "embedding": embedding
+    }
+
+    result = supabase.table("memories").update(data).eq("user_id", user_id).eq("source_id", source_id).eq("source_type", source_type).execute()
+    return result.data
+
 #--------------------------------------- PRODUCTIVITY --------------------------------------------
 
 def db_habit_tool(
@@ -139,4 +155,22 @@ def db_complete_task(task_id: int, user_id: int):
 # Get Task
 def db_get_tasks(user_id: int):
     result = supabase.table("tasks").select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
+    return result.data
+
+# Reflection Task
+def db_reflection_tool(
+        user_id: int,
+        content: str,
+        mood: str | None,
+        reflection_date
+):
+
+    data = {
+        "user_id": user_id,
+        "content": content,
+        "mood": mood,
+        "reflection_date": reflection_date.isoformat()
+    }
+
+    result = supabase.table("reflections").insert(data).execute()
     return result.data

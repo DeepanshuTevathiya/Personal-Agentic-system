@@ -1,5 +1,5 @@
 from sentence_transformers import SentenceTransformer
-from app.database.db import db_store_memory
+from app.database.db import db_store_memory, db_update_memory
 from app.database.config import supabase
 
 # LOADING EMBEDDING MODEL -----------------------------------------------------------------------
@@ -46,7 +46,8 @@ def store_memory(
 def retrieve_memories(
         user_id: int,
         query: str,
-        top_k: int = 5
+        top_k: int = 5,
+        source_types: list[str] | None = None
 ):
     query_embedding = create_embeddings(query)
 
@@ -55,8 +56,28 @@ def retrieve_memories(
         {
             "query_embedding": query_embedding  ,
             "match_user_id": user_id,
-            "match_count": top_k
+            "match_count": top_k,
+            "match_source_types": source_types
         }
     ).execute()
 
     return result.data
+
+# UPDATE CONTENT IN DATABASE
+def update_memory(
+        user_id: int,
+        source_id: int,
+        source_type: str,
+        content: str
+):
+    embedding = create_embeddings(content)
+
+    result = db_update_memory(
+        user_id=user_id,
+        source_type=source_type,
+        source_id=source_id,
+        content=content,
+        embedding=embedding
+    )
+
+    return result

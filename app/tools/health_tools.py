@@ -156,19 +156,19 @@ def log_sleep(
 
 @tool
 def retrieve_health_data(
-     query: str,
-     user_id: Annotated[int, InjectedState("user_id")]
+    query: str,
+    user_id: Annotated[int, InjectedState("user_id")]
 ):
     """Retrieve relevant health data from memory."""
-
     result = retrieve_memories(
-         user_id=user_id,
-         query=query,
-         top_k=5
+        user_id=user_id,
+        query=query,
+        top_k=5,
+        source_types=["workouts", "meals", "sleep_logs"]
     )
 
     return {
-         "status": "success",
-         "data": result
+        "status": "success",
+        "data": result
     }
 

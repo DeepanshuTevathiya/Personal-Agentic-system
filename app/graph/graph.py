@@ -6,7 +6,7 @@ from app.graph.state import AssistantState
 from langchain_core.messages import HumanMessage
 from app.graph.node import route_node, health_node, should_continue_health, productivity_node, should_continue_productivity
 from app.tools.health_tools import log_workout, log_meal, log_sleep, retrieve_health_data
-from app.tools.productivity_tools import habit_tool, task_tool, complete_task, get_tasks
+from app.tools.productivity_tools import habit_tool, task_tool, complete_task, get_tasks, reflection_tool
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -28,7 +28,8 @@ def build_assit_graph():
         habit_tool,
         task_tool,
         complete_task,
-        get_tasks
+        get_tasks,
+        reflection_tool
         ])
     )
 
@@ -74,7 +75,7 @@ state = graph.invoke(
     AssistantState(
         user_id=1,
         messages=[
-            HumanMessage(content="""I have completed my last task Of complete DSA assignment . Mark it as completed. """)
+            HumanMessage(content="""Tell me what was my last completed task.""")
         ]
     ),
     config=config
