@@ -4,7 +4,7 @@ from typing import Annotated, Optional
 from pydantic import BaseModel
 from datetime import date, datetime
 from app.database.db import db_habit_tool, db_task_tool, db_complete_task, db_get_tasks, db_reflection_tool
-from app.memory.memory import store_memory, update_memory
+from app.memory.memory import store_memory, update_memory, retrieve_memories
 
 # === Habit tool ===
 class HabitInput(BaseModel):
@@ -166,5 +166,25 @@ def reflection_tool(
     return {
         "status": "success",
         "message": "reflections logged successfully",
+        "data": result
+    }
+
+# Retrieve data from vector db(memory)
+
+@tool
+def retrieve_productivity_data(
+    query: str,
+    user_id: Annotated[int, InjectedState("user_id")]
+):
+    """Retrieve relevant productivity data from memory."""
+
+    result = retrieve_memories(
+        user_id=user_id,
+        query=query,
+        top_k=5,
+        source_types=["tasks", "habits", "reflections"]
+    )
+    return {
+        "status": "success",
         "data": result
     }

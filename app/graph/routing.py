@@ -11,7 +11,8 @@ load_dotenv()
 def get_llm():
       return ChatGroq(
             model="openai/gpt-oss-20b",
-            temperature=0
+            temperature=0,
+            max_tokens=900
             )
 
 class RequestType(BaseModel):
