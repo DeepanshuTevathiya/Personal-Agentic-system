@@ -4,7 +4,7 @@ from rich import print
 
 from app.graph.state import AssistantState
 from langchain_core.messages import HumanMessage
-from app.graph.node import route_node, health_node, should_continue_health, productivity_node, should_continue_productivity
+from app.graph.node import route_node, health_node, should_continue_health, productivity_node, should_continue_productivity, synthesis_node
 from app.tools.health_tools import log_workout, log_meal, log_sleep, retrieve_health_data
 from app.tools.productivity_tools import habit_tool, task_tool, complete_task, get_tasks, reflection_tool, retrieve_productivity_data
 
@@ -33,6 +33,7 @@ def build_assit_graph():
         retrieve_productivity_data
         ])
     )
+    graph.add_node("synthesis", synthesis_node)
 
 
     graph.add_edge(START, "route")
@@ -42,7 +43,7 @@ def build_assit_graph():
         {
             "health": "health",
             "productivity": "productivity",
-            # "both": ...
+            "both": "health" # health -> produ -> synthesis
         }
     )
 
@@ -51,6 +52,7 @@ def build_assit_graph():
         should_continue_health,
         {
             "tools": "health_tools",
+            "productivity": "productivity",
             "end": END
         }
     )
@@ -61,10 +63,12 @@ def build_assit_graph():
         should_continue_productivity,
         {
             "tools": "productivity_tools",
+            "synthesis": "synthesis",
             "end": END
         }
     )
     graph.add_edge("productivity_tools", "productivity")
+    graph.add_edge("synthesis", END)
 
     return graph.compile()
 
@@ -76,7 +80,7 @@ state = graph.invoke(
     AssistantState(
         user_id=1,
         messages=[
-            HumanMessage(content="""What productivity patterns have I had recently?""")
+            HumanMessage(content="""I worked out today and I’ve also completed my DSA assignment. How have I been doing with both my health and productivity recently?""")
         ]
     ),
     config=config
