@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#ffffff" />
+    <title>Nexus — your personal chief of staff</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./styles.css" />
+    <script defer src="./app.js"></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" id="sidebar">
+        <a class="brand" href="#chat" aria-label="Nexus home">
+          <span class="brand-mark">n</span><span>Nexus</span><span class="brand-pill">PERSONAL AI</span>
+        </a>
+        <div class="workspace-label eyebrow">YOUR WORKSPACE</div>
+        <nav class="main-nav" aria-label="Main navigation">
+          <button class="nav-link active" data-view="chat"><span class="nav-icon">✳</span><span>Chat</span><span class="nav-key">⌘ 1</span></button>
+          <button class="nav-link" data-view="health"><span class="nav-icon">♡</span><span>Health</span></button>
+          <button class="nav-link" data-view="productivity"><span class="nav-icon">⌘</span><span>Productivity</span></button>
+          <button class="nav-link" data-view="history"><span class="nav-icon">◷</span><span>History</span></button>
+        </nav>
+        <div class="sidebar-divider"></div>
+        <section class="sidebar-note">
+          <div class="note-spark">✦</div>
+          <p>Your day, connected.</p>
+          <span>Ask about your health, work, or how they fit together.</span>
+        </section>
+        <div class="sidebar-bottom">
+          <span class="status-dot"></span><span id="storage-status">Saved on this device</span>
+          <button class="icon-button help-button" title="About Nexus" aria-label="About Nexus" id="about-button">?</button>
+        </div>
+      </aside>
+
+      <main class="main-area">
+        <header class="topbar">
+          <button class="icon-button mobile-menu" id="mobile-menu" aria-label="Open navigation">☰</button>
+          <div class="breadcrumb"><span>NEXUS</span><i>/</i><strong id="current-section">CHAT</strong></div>
+          <div class="topbar-right"><span class="today-label" id="today-label"></span><span class="avatar">N</span></div>
+        </header>
+        <div class="view-host" id="view-host" tabindex="-1">
+          <section class="chat-panel chat-fallback" aria-label="Nexus chat">
+            <div class="chat-topline"><div class="chat-agent"><span class="online-dot"></span>Nexus assistant</div><span class="eyebrow">CONNECTING</span></div>
+            <div class="chat-messages"><article class="message assistant"><div class="message-bubble">Nexus is loading. If this remains visible, reload the page.</div></article></div>
+            <div class="chat-compose"><div class="compose-box"><textarea rows="1" placeholder="Tell Nexus what’s on your mind…" aria-label="Message Nexus" disabled></textarea><button class="send-button" disabled aria-label="Send message">↗</button></div></div>
+          </section>
+        </div>
+      </main>
+    </div>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <dialog class="modal" id="entry-modal">
+      <form method="dialog" class="modal-card" id="entry-form">
+        <div class="modal-head"><div><span class="eyebrow" id="modal-kicker">NEW ENTRY</span><h2 id="modal-title">Add an entry</h2></div><button class="icon-button" value="cancel" aria-label="Close">×</button></div>
+        <div id="modal-fields" class="modal-fields"></div>
+        <div class="modal-actions"><button class="button button-quiet" value="cancel">Cancel</button><button class="button button-dark" id="modal-submit" value="default">Save entry <span>↗</span></button></div>
+      </form>
+    </dialog>
+  </body>
+</html>
