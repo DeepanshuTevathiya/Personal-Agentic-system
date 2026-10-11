@@ -10,3 +10,5 @@ sentence_transformers
 langsmith
 langgraph-cli[inmem]
 pytest
+fastapi 
+uvicorn

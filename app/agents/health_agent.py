@@ -37,3 +37,4 @@ def get_health_agent():
 # -- Task Agent (get task id, delete task, remove default taskid = 27 and all)
 # -- use JEV MODEL at place of routing llms
 # -- llm can ask further ques(rarely)
+# -- while retrieving logs, llm checking tools tables also, it should just chekc memory table
