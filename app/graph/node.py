@@ -3,8 +3,8 @@ from app.graph.subgraph_state import HealthState, ProductivityState
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.prompts import ChatPromptTemplate
 from app.graph.routing import route, get_llm    
-from app.agents.health_agent import get_health_agent
-from app.agents.productivity_agent import get_productivity_agent
+from app.agents.health_agent import get_health_agent, HEALTH_SYSTEM_PROMPT
+from app.agents.productivity_agent import get_productivity_agent, PRODUCTIVITY_SYSTEM_PROMPT
 
 from app.graph.history import build_clean_history, build_domain_history
 
@@ -22,7 +22,7 @@ def route_node(state: AssistantState):
 
 def health_node(state: HealthState):
     health_agent = get_health_agent()
-    response = health_agent.invoke(state.messages)
+    response = health_agent.invoke([HEALTH_SYSTEM_PROMPT, *state.messages])
 
     return {"messages": [response]}
 
@@ -36,7 +36,7 @@ def should_continue_health(state: HealthState):
 
 def productivity_node(state: ProductivityState):
     productivity_agent = get_productivity_agent()
-    response = productivity_agent.invoke(state.messages)
+    response = productivity_agent.invoke([PRODUCTIVITY_SYSTEM_PROMPT, *state.messages])
 
     return {"messages": [response]}
 
@@ -47,34 +47,73 @@ def should_continue_productivity(state: ProductivityState):
         return "tools"
     return "end"
 
+def reset_results(state: AssistantState):
+    return {
+        "health_result": "",
+        "productivity_result": "",
+        "final_response": "",
+    }
+
+def finalize_single_domain(state: AssistantState):
+    if state.request_type == "health":
+        answer = state.health_result
+    else:
+        answer = state.productivity_result
+
+    return {
+        "final_response": answer,
+        "messages": [AIMessage(content=answer)],
+    }
+
 def synthesis_node(state: AssistantState):
     llm = get_llm()
 
+    # Get the latest user request.
+    user_message = next(
+        (
+            msg.content
+            for msg in reversed(state.messages)
+            if isinstance(msg, HumanMessage)
+        ),
+        "",
+    )
+
     prompt = ChatPromptTemplate.from_messages([
-        ("system", """
-        You are a personal chief of staff.
+    ("system", """
+    You are Nexus, a personal Chief of Staff.
 
-        Combine the health and productivity results into one
-        clear, useful response to the user's original request.
+    Combine the Health and Productivity agent results into one clear,
+    concise response that directly answers the user's original request.
 
-        Do not invent information. Use only the results provided by the two agents.
-        """),
-        ("human", """
-        User request: {user_message}
-        Health result: {health_result}
-        Productivity result: {productivity_result}
-        """)
-    ])
+    - Keep health and productivity insights within their respective domains.
+    - Connect insights across domains only when supported by evidence.
+    - Avoid repetition and unsupported assumptions.
+    - If a result is missing or unavailable, acknowledge it briefly.
+    - Provide practical, actionable recommendations when appropriate.
+    """),
+    ("human", """
+    User request: {user_message}
+    Health result: {health_result}
+    Productivity result: {productivity_result}
+    """),
+])
 
-    chain = prompt | llm
-    response = chain.invoke({
-        "user_message": state.messages[0].content,
+    response = (prompt | llm).invoke({
+        "user_message": user_message,
         "health_result": state.health_result,
-        "productivity_result": state.productivity_result
+        "productivity_result": state.productivity_result,
     })
 
-    state.final_response = response.content # type: ignore
-    return state
+    answer = response.content
+
+    # Ensure the final response is text.
+    if not isinstance(answer, str):
+        answer = str(answer)
+
+    return {
+        "final_response": answer,
+        "messages": [AIMessage(content=answer)],
+    }
 
 # Wrappers - Get the current msg, last 3 common msg, last 3 domain specific msg => pass to subgraph
 

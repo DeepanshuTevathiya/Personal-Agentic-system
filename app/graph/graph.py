@@ -1,89 +1,82 @@
 from langgraph.graph import StateGraph, START, END
-from langgraph.prebuilt import ToolNode
 from rich import print
 
 from app.graph.state import AssistantState
 from langchain_core.messages import HumanMessage
-from app.graph.node import route_node, health_node, should_continue_health, productivity_node, should_continue_productivity, synthesis_node
-from app.tools.health_tools import log_workout, log_meal, log_sleep, retrieve_health_data
-from app.tools.productivity_tools import habit_tool, task_tool, complete_task, get_tasks, reflection_tool, retrieve_productivity_data
+from app.graph.node import (
+    route_node,
+    health_wrapper,
+    productivity_wrapper,
+    reset_results,
+    finalize_single_domain,
+    synthesis_node
+)
+# from dotenv import load_dotenv
+# load_dotenv()
 
-from dotenv import load_dotenv
-load_dotenv()
+def route_after_classification(state: AssistantState):
+    if state.request_type in {"health", "productivity", "both"}:
+        return state.request_type
 
-def build_assit_graph():
+    raise ValueError(f"Invalid request type: {state.request_type!r}")
+
+
+def dispatch_both(state: AssistantState):
+    return {}
+
+def build_assist_graph():
     graph = StateGraph(AssistantState)
 
+    graph.add_node("reset", reset_results)
     graph.add_node("route", route_node)
-    graph.add_node("health", health_node) # generate tool call msg from user msg.
-    graph.add_node("health_tools", ToolNode([    #-> LOGs IN DB
-        log_workout,
-        log_meal,
-        log_sleep,
-        retrieve_health_data
-        ])
-    )
-    graph.add_node("productivity", productivity_node)
-    graph.add_node("productivity_tools", ToolNode([
-        habit_tool,
-        task_tool,
-        complete_task,
-        get_tasks,
-        reflection_tool,
-        retrieve_productivity_data
-        ])
-    )
+    graph.add_node("health", health_wrapper)
+    graph.add_node("productivity", productivity_wrapper)
+    graph.add_node("dispatch_both", dispatch_both)
+    graph.add_node("health_both", health_wrapper)
+    graph.add_node("productivity_both", productivity_wrapper)
+    graph.add_node("finalize", finalize_single_domain)
     graph.add_node("synthesis", synthesis_node)
 
+    graph.add_edge(START, "reset")
+    graph.add_edge("reset", "route")
 
-    graph.add_edge(START, "route")
     graph.add_conditional_edges(
         "route",
-        lambda state: state.request_type,
+        route_after_classification,
         {
             "health": "health",
             "productivity": "productivity",
-            "both": "health" # health -> produ -> synthesis
+            "both": "dispatch_both",
         }
     )
 
-    graph.add_conditional_edges(
-        "health",
-        should_continue_health,
-        {
-            "tools": "health_tools",
-            "productivity": "productivity",
-            "end": END
-        }
-    )
-    graph.add_edge("health_tools", "health")
+    graph.add_edge("health", "finalize")
+    graph.add_edge("productivity", "finalize")
 
-    graph.add_conditional_edges(
-        "productivity",
-        should_continue_productivity,
-        {
-            "tools": "productivity_tools",
-            "synthesis": "synthesis",
-            "end": END
-        }
+    graph.add_edge("dispatch_both", "health_both")
+    graph.add_edge("dispatch_both", "productivity_both")
+
+    graph.add_edge(
+        ["health_both", "productivity_both"],  #wait for both nodes response
+        "synthesis"
     )
-    graph.add_edge("productivity_tools", "productivity")
+
+    graph.add_edge("finalize", END)
     graph.add_edge("synthesis", END)
 
     return graph.compile()
 
-
-graph = build_assit_graph()
+graph = build_assist_graph()
 
 config = {"configurable":{"thread_id":"1"}}
 state = graph.invoke(
     AssistantState(
         user_id=1,
         messages=[
-            HumanMessage(content="""I worked out today and I’ve also completed my DSA assignment. How have I been doing with both my health and productivity recently?""")
+            HumanMessage(content="""working on my new project cheif of staff, deadline: 17/10/2026, priority high""")
         ]
     ),
-    config=config
+    config=config # type: ignore
 )
 
 print(state)
