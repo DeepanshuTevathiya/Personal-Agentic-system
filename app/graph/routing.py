@@ -18,6 +18,7 @@ def get_llm():
 class RequestType(BaseModel):
         request_type: Literal["health", "productivity", "both"] = Field(description="Type of user query")
 
+# JEV Classifier
 def route(state :AssistantState):
     llm = get_llm().with_structured_output(RequestType, method="json_mode")
 
@@ -52,4 +53,4 @@ def route(state :AssistantState):
     print("USER MESSAGE:", state.messages[-1].content)
     print("CLASSIFIER RESULT:", result)
     print("===========================================================================================")
-    return result.request_type
+    return result.request_type # type: ignore

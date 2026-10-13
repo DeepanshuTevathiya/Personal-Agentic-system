@@ -24,7 +24,7 @@ def route_after_classification(state: AssistantState):
 def dispatch_both(state: AssistantState):
     return {}
 
-def build_assist_graph():
+def build_assist_graph(checkpointer=None):
     graph = StateGraph(AssistantState)
 
     graph.add_node("reset", reset_results)
@@ -64,7 +64,7 @@ def build_assist_graph():
     graph.add_edge("finalize", END)
     graph.add_edge("synthesis", END)
 
-    return graph.compile()
+    return graph.compile(checkpointer=checkpointer)
 
 graph = build_assist_graph()
 

@@ -12,3 +12,7 @@ langgraph-cli[inmem]
 pytest
 fastapi 
 uvicorn
+PyJWT[crypto]
+httpx
+langgraph-checkpoint-postgres
+psycopg[binary,pool]
