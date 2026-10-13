@@ -9,9 +9,28 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="./styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="./config.js"></script>
     <script defer src="./app.js"></script>
   </head>
   <body>
+    <section class="auth-gate" id="auth-gate" aria-labelledby="auth-title">
+      <div class="auth-card">
+        <div class="auth-brand"><span class="brand-mark">n</span><span>Nexus</span></div>
+        <span class="eyebrow" id="auth-kicker">WELCOME BACK</span>
+        <h1 id="auth-title">Your day, connected.</h1>
+        <p class="auth-copy" id="auth-copy">Sign in to continue to your personal chief of staff.</p>
+        <form id="auth-form" class="auth-form">
+          <label class="form-field"><span class="field-label">Email</span><input class="form-input" id="auth-email" type="email" autocomplete="email" required /></label>
+          <label class="form-field"><span class="field-label">Password</span><input class="form-input" id="auth-password" type="password" autocomplete="current-password" minlength="6" required /></label>
+          <button class="button button-dark auth-submit" id="auth-submit" type="submit">Sign in <span>↗</span></button>
+        </form>
+        <div class="auth-divider"><span>Or sign in with</span></div>
+        <button class="button auth-google" id="auth-google" type="button"><svg aria-hidden="true" viewBox="0 0 24 24" class="google-mark"><path fill="#4285F4" d="M21.35 12.23c0-.72-.06-1.42-.18-2.09H12v3.96h5.24a4.48 4.48 0 0 1-1.94 2.94v2.45h3.14c1.84-1.7 2.91-4.2 2.91-7.26Z"/><path fill="#34A853" d="M12 21.6c2.63 0 4.84-.87 6.46-2.36l-3.14-2.45c-.87.58-1.98.92-3.32.92-2.55 0-4.71-1.72-5.49-4.03H3.27v2.53A9.76 9.76 0 0 0 12 21.6Z"/><path fill="#FBBC05" d="M6.51 13.68a5.86 5.86 0 0 1 0-3.36V7.79H3.27a9.78 9.78 0 0 0 0 8.42l3.24-2.53Z"/><path fill="#EA4335" d="M12 6.29c1.43 0 2.71.49 3.73 1.46l2.8-2.8C16.84 3.37 14.63 2.4 12 2.4a9.76 9.76 0 0 0-8.73 5.39l3.24 2.53C7.29 8.01 9.45 6.29 12 6.29Z"/></svg><span>Google</span></button>
+        <p class="auth-status" id="auth-status" role="status" aria-live="polite"></p>
+        <button class="auth-toggle" id="auth-toggle" type="button">Need an account? Sign up</button>
+      </div>
+    </section>
     <div class="app-shell">
       <aside class="sidebar" id="sidebar">
         <a class="brand" href="#chat" aria-label="Nexus home">
@@ -40,7 +59,7 @@
         <header class="topbar">
           <button class="icon-button mobile-menu" id="mobile-menu" aria-label="Open navigation">☰</button>
           <div class="breadcrumb"><span>NEXUS</span><i>/</i><strong id="current-section">CHAT</strong></div>
-          <div class="topbar-right"><span class="today-label" id="today-label"></span><span class="avatar">N</span></div>
+          <div class="topbar-right"><span class="today-label" id="today-label"></span><span class="avatar">N</span><button class="logout-button" id="logout-button" type="button">Log out</button></div>
         </header>
         <div class="view-host" id="view-host" tabindex="-1">
           <section class="chat-panel chat-fallback" aria-label="Nexus chat">

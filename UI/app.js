@@ -1,6 +1,10 @@
 const STORAGE_KEY = "nexus.ui.v1";
 const API_BASE = window.NEXUS_API_BASE || "/api";
-const USER_ID = 1;
+const SUPABASE_URL = window.NEXUS_SUPABASE_URL || "";
+const SUPABASE_ANON_KEY = window.NEXUS_SUPABASE_ANON_KEY || "";
+const supabaseClient = window.supabase && SUPABASE_URL && SUPABASE_ANON_KEY
+  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  : null;
 const initialData = {
   messages: [{ role: "assistant", text: "Hey, I’m Nexus. I can help you keep your health and productivity in sync. What’s on your mind?", time: Date.now() }],
   workouts: [], meals: [], sleep: [], tasks: [], habits: [], reflections: [],
@@ -11,6 +15,113 @@ let historyFilters = { domain: "all", range: "all", search: "" };
 let healthTab = "workouts";
 let productivityTab = "tasks";
 let toastTimer;
+let session = null;
+let currentThreadId = null;
+let authMode = "signin";
+
+function setAuthStatus(message, isError = false) {
+  const status = document.querySelector("#auth-status");
+  if (!status) return;
+  status.textContent = message;
+  status.classList.toggle("error", isError);
+}
+
+function updateAuthScreen() {
+  const gate = document.querySelector("#auth-gate");
+  const shell = document.querySelector(".app-shell");
+  gate?.classList.toggle("is-hidden", Boolean(session));
+  shell?.classList.toggle("is-hidden", !session);
+}
+
+function updateAuthMode() {
+  const signup = authMode === "signup";
+  document.querySelector("#auth-kicker").textContent = signup ? "CREATE YOUR ACCOUNT" : "WELCOME BACK";
+  document.querySelector("#auth-title").textContent = signup ? "Start with Nexus." : "Your day, connected.";
+  document.querySelector("#auth-copy").textContent = signup ? "Create your account to keep your personal assistant in sync." : "Sign in to continue to your personal chief of staff.";
+  document.querySelector("#auth-submit").innerHTML = signup ? "Sign up <span>↗</span>" : "Sign in <span>↗</span>";
+  document.querySelector("#auth-toggle").textContent = signup ? "Already have an account? Sign in" : "Need an account? Sign up";
+  document.querySelector("#auth-password").autocomplete = signup ? "new-password" : "current-password";
+}
+
+async function handleAuthSubmit(event) {
+  event.preventDefault();
+  if (!supabaseClient) {
+    setAuthStatus("Add your Supabase URL and anon key in config.js first.", true);
+    return;
+  }
+
+  const email = document.querySelector("#auth-email").value.trim();
+  const password = document.querySelector("#auth-password").value;
+  const submit = document.querySelector("#auth-submit");
+  submit.disabled = true;
+  setAuthStatus(authMode === "signup" ? "Creating your account..." : "Signing you in...");
+
+  const result = authMode === "signup"
+    ? await supabaseClient.auth.signUp({ email, password })
+    : await supabaseClient.auth.signInWithPassword({ email, password });
+
+  submit.disabled = false;
+  if (result.error) {
+    setAuthStatus(result.error.message, true);
+    return;
+  }
+
+  if (authMode === "signup" && !result.data.session) {
+    setAuthStatus("Check your email to confirm your account, then sign in.");
+    return;
+  }
+
+  setAuthStatus("");
+}
+
+async function signInWithGoogle() {
+  if (!supabaseClient) {
+    setAuthStatus("Add your Supabase URL and anon key in config.js first.", true);
+    return;
+  }
+  setAuthStatus("Opening Google sign in...");
+  const { error } = await supabaseClient.auth.signInWithOAuth({
+    provider: "google",
+    options: { redirectTo: window.location.origin },
+  });
+  if (error) setAuthStatus(error.message, true);
+}
+
+async function signOut() {
+  if (!supabaseClient) return;
+  const { error } = await supabaseClient.auth.signOut();
+  if (error) toast(error.message);
+}
+
+async function boot() {
+  document.querySelector("#auth-form").addEventListener("submit", handleAuthSubmit);
+  document.querySelector("#auth-google").addEventListener("click", signInWithGoogle);
+  document.querySelector("#logout-button").addEventListener("click", signOut);
+  document.querySelector("#auth-toggle").addEventListener("click", () => {
+    authMode = authMode === "signin" ? "signup" : "signin";
+    updateAuthMode();
+    setAuthStatus("");
+  });
+  updateAuthMode();
+
+  if (!supabaseClient) {
+    updateAuthScreen();
+    setAuthStatus("Add your Supabase URL and anon key in config.js first.", true);
+    return;
+  }
+
+  const { data } = await supabaseClient.auth.getSession();
+  session = data.session;
+  updateAuthScreen();
+  if (session) render();
+
+  supabaseClient.auth.onAuthStateChange((_event, nextSession) => {
+    session = nextSession;
+    currentThreadId = null;
+    updateAuthScreen();
+    if (session) render();
+  });
+}
 
 function loadData() {
   try { return { ...structuredClone(initialData), ...JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}") }; }
@@ -115,6 +226,7 @@ async function sendMessage(text) {
   const box = document.querySelector("#chat-messages"); box.insertAdjacentHTML("beforeend", `<div class="message assistant" id="typing-indicator"><div class="typing"><span></span><span></span><span></span></div></div>`); box.scrollTop = box.scrollHeight;
   try {
     const answer = await requestAssistantReply(value);
+    currentThreadId = answer.threadId || currentThreadId;
     document.querySelector("#typing-indicator")?.remove();
     data.messages.push({ role:"assistant", text:answer.text, meta:answer.meta, time:Date.now(), timeLabel:timeNow() }); saveData(); render();
     document.querySelector("#chat-messages").scrollTop = document.querySelector("#chat-messages").scrollHeight;
@@ -124,14 +236,29 @@ async function sendMessage(text) {
   }
 }
 async function requestAssistantReply(message) {
+  if (!supabaseClient) throw new Error("Supabase client is not configured");
+  const { data } = await supabaseClient.auth.getSession();
+  const accessToken = data.session?.access_token;
+  if (!accessToken) throw new Error("No authenticated session");
+
   const response = await fetch(`${API_BASE}/chat`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ user_id: USER_ID, message }),
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({
+      message,
+      thread_id: currentThreadId,
+    }),
   });
   if (!response.ok) throw new Error(`Chat request failed (${response.status})`);
   const payload = await response.json();
-  return { text: payload.response, meta: "NEXUS RESPONSE" };
+  return {
+    text: payload.response,
+    threadId: payload.thread_id,
+    meta: "NEXUS RESPONSE",
+  };
 }
 function localAssistantReply(text) {
   const lower = text.toLowerCase();
@@ -192,4 +319,4 @@ document.querySelector("#today-label").textContent = new Intl.DateTimeFormat(und
 document.querySelector("#mobile-menu").addEventListener("click", () => { document.querySelector("#sidebar").classList.add("open"); document.querySelector(".mobile-backdrop")?.classList.add("open"); });
 const backdrop = document.createElement("div"); backdrop.className = "mobile-backdrop"; backdrop.addEventListener("click", () => { document.querySelector("#sidebar").classList.remove("open"); backdrop.classList.remove("open"); }); document.body.append(backdrop);
 document.querySelector("#about-button").addEventListener("click", () => toast("Nexus — your personal chief of staff. Your entries are saved in this browser."));
-render();
+boot();
