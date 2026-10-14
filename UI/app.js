@@ -17,6 +17,8 @@ let productivityTab = "tasks";
 let toastTimer;
 let session = null;
 let currentThreadId = null;
+let threads = [];
+let backendLogs = { health: [], productivity: [] };
 let authMode = "signin";
 
 function setAuthStatus(message, isError = false) {
@@ -113,14 +115,118 @@ async function boot() {
   const { data } = await supabaseClient.auth.getSession();
   session = data.session;
   updateAuthScreen();
-  if (session) render();
+  if (session) {
+    render();
+    loadThreads().catch(() => {});
+    loadBackendLogs().catch(error => toast(error.message));
+  }
 
   supabaseClient.auth.onAuthStateChange((_event, nextSession) => {
     session = nextSession;
     currentThreadId = null;
     updateAuthScreen();
-    if (session) render();
+    if (session) {
+      render();
+      loadThreads().catch(() => {});
+      loadBackendLogs().catch(error => toast(error.message));
+    }
   });
+}
+
+async function authenticatedFetch(path, options = {}) {
+  if (!supabaseClient) throw new Error("Supabase client is not configured");
+  const { data } = await supabaseClient.auth.getSession();
+  const accessToken = data.session?.access_token;
+  if (!accessToken) throw new Error("No authenticated session");
+
+  const headers = new Headers(options.headers || {});
+  headers.set("Authorization", `Bearer ${accessToken}`);
+  return fetch(`${API_BASE}${path}`, { ...options, headers });
+}
+
+async function loadThreads() {
+  if (!session) return;
+  const response = await authenticatedFetch("/threads");
+  if (!response.ok) throw new Error(`Thread request failed (${response.status})`);
+  const payload = await response.json();
+  threads = payload.threads || [];
+  if (currentView === "history") render();
+}
+
+function normalizeBackendLog(item, index) {
+  const sourceType = item.source_type || item.sourceType || "memory";
+  const sourceId = item.source_id ?? item.sourceId ?? index;
+  const labels = {
+    workouts: "Workout",
+    meals: "Meal",
+    sleep_logs: "Sleep",
+    tasks: "Task",
+    habits: "Habit",
+    reflections: "Reflection",
+  };
+  let parsed = null;
+  if (sourceType === "tasks" && typeof item.content === "string") {
+    try { parsed = JSON.parse(item.content); } catch {}
+  }
+  const rawTaskContent = sourceType === "tasks" && typeof item.content === "string" ? item.content : "";
+  const plainTaskTitle = rawTaskContent.match(/^Task:\s*(.*?)(?:\.\s*(?:Description|Status|Priority|Due date):|$)/i)?.[1]?.trim();
+  const plainTaskStatus = rawTaskContent.match(/Status:\s*([^.]+)/i)?.[1]?.trim().toLowerCase();
+  return {
+    id: `backend-${sourceType}-${sourceId}`,
+    title: parsed?.title || plainTaskTitle || labels[sourceType] || "Saved entry",
+    detail: parsed?.description || item.description || item.notes || item.content || "Saved by Nexus",
+    status: parsed?.status || item.status || plainTaskStatus || "",
+    due: parsed?.due_date || item.due_date || "",
+    createdAt: item.created_at || item.createdAt || new Date().toISOString(),
+    sourceType,
+  };
+}
+
+function mergeBackendRecords(existing, incoming) {
+  const records = new Map(existing.map(item => [String(item.id), item]));
+  incoming.forEach(item => records.set(String(item.id), item));
+  return [...records.values()];
+}
+
+async function loadBackendLogs() {
+  if (!session) return;
+  const [healthResponse, productivityResponse] = await Promise.all([
+    authenticatedFetch("/logs?domain=health&query=recent%20activities&limit=20"),
+    authenticatedFetch("/logs?domain=productivity&query=recent%20activities&limit=20"),
+  ]);
+  if (!healthResponse.ok || !productivityResponse.ok) {
+    throw new Error("Backend logs could not be loaded");
+  }
+
+  const healthPayload = await healthResponse.json();
+  const productivityPayload = await productivityResponse.json();
+  const healthLogs = (healthPayload.logs || []).map(normalizeBackendLog);
+  const productivityLogs = (productivityPayload.logs || []).map(normalizeBackendLog);
+
+  backendLogs = { health: healthLogs, productivity: productivityLogs };
+  data.workouts = mergeBackendRecords(data.workouts, healthLogs.filter(item => item.sourceType === "workouts"));
+  data.meals = mergeBackendRecords(data.meals, healthLogs.filter(item => item.sourceType === "meals"));
+  data.sleep = mergeBackendRecords(data.sleep, healthLogs.filter(item => item.sourceType === "sleep_logs"));
+  data.tasks = mergeBackendRecords(data.tasks, productivityLogs.filter(item => item.sourceType === "tasks"));
+  data.habits = mergeBackendRecords(data.habits, productivityLogs.filter(item => item.sourceType === "habits"));
+  data.reflections = mergeBackendRecords(data.reflections, productivityLogs.filter(item => item.sourceType === "reflections"));
+  saveData();
+  render();
+}
+
+async function openThread(threadId) {
+  const response = await authenticatedFetch(`/threads/${encodeURIComponent(threadId)}/messages`);
+  if (!response.ok) throw new Error(`Message request failed (${response.status})`);
+  const payload = await response.json();
+  currentThreadId = payload.thread_id;
+  data.messages = (payload.messages || []).map(message => ({
+    role: message.role === "human" ? "user" : message.role === "ai" ? "assistant" : message.role,
+    text: message.content,
+    time: Date.now(),
+    timeLabel: timeNow(),
+  }));
+  saveData();
+  setView("chat");
 }
 
 function loadData() {
@@ -145,6 +251,7 @@ function header(eyebrow, title, subtitle, action = "") {
   return `<div class="page-heading"><div><span class="eyebrow">${eyebrow}</span><h1>${title}</h1><p>${subtitle}</p></div>${action ? `<div class="page-actions">${action}</div>` : ""}</div>`;
 }
 function addButton(label, type, icon = "+") { return `<button class="button button-dark" data-add="${type}">${label}<span>${icon}</span></button>`; }
+function addMenuButton(label, domain) { return `<button class="button button-dark" data-add-menu="${domain}">${label}<span>+</span></button>`; }
 function emptyState(icon, title, detail) { return `<div class="empty-state"><div class="empty-icon">${icon}</div><strong>${title}</strong><span>${detail}</span></div>`; }
 function sorted(items) { return [...items].sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)); }
 
@@ -171,20 +278,26 @@ function renderHealth() {
     ["SLEEP ENTRIES", data.sleep.filter(x => isCurrentMonth(x.createdAt)).length, "Rest is part of progress", "☾"],
   ];
   const rows = latest.length ? latest.map(item => `<div class="entry-row"><div class="entry-glyph">${config[healthTab][1]}</div><div class="entry-copy"><div class="entry-title">${esc(item.title)}</div><div class="entry-detail">${esc(item.detail || "Added to your health log")}</div></div><span class="entry-date">${fmtDate(item.createdAt)}</span></div>`).join("") : emptyState(config[healthTab][1], `No ${healthTab} logged yet`, "Add your first entry to start building a picture.");
-  return `${header("HEALTH / YOUR LOG", `Take care of <span class="heading-accent">you.</span>`, "A simple place to keep track of movement, meals, and rest.", addButton("Add entry", healthTab))}
+  return `${header("HEALTH / YOUR LOG", `Take care of <span class="heading-accent">you.</span>`, "A simple place to keep track of movement, meals, and rest.", addMenuButton("Add health entry", "health"))}
     <div class="stat-grid">${stats.map(([label,value,foot,mark]) => `<article class="stat-card"><span class="stat-mark">${mark}</span><div class="stat-label">${label}</div><div class="stat-value">${value}</div><div class="stat-foot">${foot}</div></article>`).join("")}</div>
     <section class="section-card"><div class="section-card-head"><div class="tabs">${tabs.map(([key,label]) => `<button class="tab-button ${healthTab===key?"active":""}" data-health-tab="${key}">${label}</button>`).join("")}</div><span>${all.length} ${all.length===1?"ENTRY":"ENTRIES"}</span></div><div class="card-body"><div class="entry-list">${rows}</div></div></section>`;
 }
 function isCurrentMonth(value) { const d = new Date(value), now = new Date(); return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear(); }
+function isPendingTask(task) { return task.status !== "completed" && !task.done; }
 function renderProductivity() {
   const tabs = [["tasks","Tasks"],["habits","Habits"],["reflections","Reflections"]];
   const all = data[productivityTab] || [];
   let body = "";
-  if (productivityTab === "tasks") body = all.length ? sorted(all).map(task => `<div class="entry-row ${task.done?"task-done":""}"><div class="entry-glyph"><input class="task-check" type="checkbox" data-task-check="${esc(task.id)}" ${task.done?"checked":""} aria-label="Mark ${esc(task.title)} complete"></div><div class="entry-copy"><div class="entry-title">${esc(task.title)}</div><div class="entry-detail">${esc(task.detail || (task.due ? `Due ${fmtDate(task.due,{month:"short",day:"numeric"})}` : "No due date"))}</div></div><span class="entry-date">${fmtDate(task.createdAt)}</span></div>`).join("") : emptyState("⌘","Nothing on your list yet","Add a task and give your day a little shape.");
+  if (productivityTab === "tasks") {
+    const pendingTasks = all.filter(isPendingTask);
+    body = pendingTasks.length
+      ? sorted(pendingTasks).map(task => `<div class="entry-row"><div class="entry-glyph">⌘</div><div class="entry-copy"><div class="entry-title">${esc(task.title)}</div><div class="entry-detail">${esc(task.detail || (task.due ? `Due ${fmtDate(task.due,{month:"short",day:"numeric"})}` : "Pending"))}</div></div><span class="entry-date">${fmtDate(task.createdAt)}</span></div>`).join("")
+      : emptyState("⌘","No pending tasks","Your current task list is clear.");
+  }
   if (productivityTab === "habits") body = all.length ? sorted(all).map(habit => `<div class="entry-row"><div class="entry-glyph">✳</div><div class="entry-copy"><div class="entry-title">${esc(habit.title)}</div><div class="entry-detail">${esc(habit.detail || "A small practice, repeated")}</div><span class="habit-streak">${esc(habit.frequency || "DAILY").toUpperCase()}</span></div><span class="entry-date">${fmtDate(habit.createdAt)}</span></div>`).join("") : emptyState("✳","No habits yet","Choose one small thing you’d like to make a regular part of your day.");
   if (productivityTab === "reflections") body = all.length ? sorted(all).map(note => `<div class="entry-row"><div class="entry-glyph">✎</div><div class="entry-copy"><div class="reflection-box">${esc(note.detail || note.title)}</div></div><span class="entry-date">${fmtDate(note.createdAt)}</span></div>`).join("") : emptyState("✎","A little space to reflect","Save a thought, a win, or something you want to remember.");
-  const taskCount = data.tasks.filter(t => !t.done).length;
-  return `${header("PRODUCTIVITY / YOUR FLOW", `Make room for <span class="heading-accent">what matters.</span>`, "Tasks, habits, and reflections to help you find your rhythm.", addButton(`Add ${productivityTab === "reflections" ? "note" : productivityTab.slice(0,-1)}`, productivityTab))}
+  const taskCount = data.tasks.filter(isPendingTask).length;
+  return `${header("PRODUCTIVITY / YOUR FLOW", `Make room for <span class="heading-accent">what matters.</span>`, "Tasks, habits, and reflections to help you find your rhythm.", addMenuButton("Add productivity entry", "productivity"))}
     <div class="stat-grid"><article class="stat-card"><span class="stat-mark">⌘</span><div class="stat-label">OPEN TASKS</div><div class="stat-value">${taskCount}</div><div class="stat-foot">One step at a time</div></article><article class="stat-card"><span class="stat-mark">✳</span><div class="stat-label">ACTIVE HABITS</div><div class="stat-value">${data.habits.length}</div><div class="stat-foot">Consistency over intensity</div></article><article class="stat-card"><span class="stat-mark">✎</span><div class="stat-label">REFLECTIONS</div><div class="stat-value">${data.reflections.length}</div><div class="stat-foot">Your thoughts, kept safe</div></article></div>
     <section class="section-card"><div class="section-card-head"><div class="tabs">${tabs.map(([key,label]) => `<button class="tab-button ${productivityTab===key?"active":""}" data-productivity-tab="${key}">${label}</button>`).join("")}</div><span>${all.length} ${all.length===1?"ITEM":"ITEMS"}</span></div><div class="card-body"><div class="entry-list">${body}</div></div></section>`;
 }
@@ -200,17 +313,22 @@ function historyRows() {
 function renderHistory() {
   const records = historyRows();
   const rows = records.length ? records.map(item => `<tr><td><span class="tag ${item.domain}">${item.domain}</span></td><td><span class="history-title">${item.glyph} &nbsp;${esc(item.title)}</span><span class="history-detail">${esc(item.detail || item.kind)}</span></td><td>${fmtDate(item.createdAt,{month:"short",day:"numeric",year:"numeric"})}</td></tr>`).join("") : `<tr><td colspan="3">${emptyState("◷","No matching activity","Try another filter or add a new entry.")}</td></tr>`;
+  const threadRows = threads.length
+    ? threads.map(thread => `<button class="thread-row" type="button" data-thread-id="${esc(thread.id)}"><span class="thread-icon">◷</span><span class="thread-copy"><strong>${esc(thread.title || "Untitled conversation")}</strong><small>${thread.updated_at ? fmtDate(thread.updated_at,{month:"short",day:"numeric",year:"numeric"}) : "Conversation"}</small></span><span>↗</span></button>`).join("")
+    : emptyState("◷", "No saved conversations yet", "Send a chat message to create your first thread.");
   return `${header("HISTORY / THE THROUGH LINE", `Your days, <span class="heading-accent">in view.</span>`, "A combined timeline of the things you’ve logged and worked on.")}
+    <section class="section-card thread-card"><div class="section-card-head"><h2>Conversations</h2><span>${threads.length} ${threads.length === 1 ? "THREAD" : "THREADS"}</span></div><div class="thread-list">${threadRows}</div></section>
     <div class="filters"><input class="search-control" id="history-search" type="search" placeholder="⌕  Search your history…" value="${esc(historyFilters.search)}" aria-label="Search history"><select class="control" id="history-domain" aria-label="Filter by category"><option value="all">All activity</option><option value="health" ${historyFilters.domain==="health"?"selected":""}>Health</option><option value="productivity" ${historyFilters.domain==="productivity"?"selected":""}>Productivity</option></select><select class="control" id="history-range" aria-label="Filter by date"><option value="all">Any time</option><option value="week" ${historyFilters.range==="week"?"selected":""}>Past 7 days</option><option value="month" ${historyFilters.range==="month"?"selected":""}>Past 30 days</option></select></div>
     <section class="section-card"><div class="section-card-head"><h2>Recent activity</h2><span>${records.length} ${records.length===1?"RECORD":"RECORDS"}</span></div><div class="card-body" style="padding:0"><table class="history-table"><thead><tr><th>Area</th><th>Activity</th><th>Date</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
 }
 
 function bindViewEvents() {
   document.querySelectorAll("[data-add]").forEach(button => button.addEventListener("click", () => openEntry(button.dataset.add)));
+  document.querySelectorAll("[data-add-menu]").forEach(button => button.addEventListener("click", () => openEntryChooser(button.dataset.addMenu)));
   document.querySelectorAll("[data-health-tab]").forEach(button => button.addEventListener("click", () => { healthTab = button.dataset.healthTab; render(); }));
   document.querySelectorAll("[data-productivity-tab]").forEach(button => button.addEventListener("click", () => { productivityTab = button.dataset.productivityTab; render(); }));
   document.querySelectorAll("[data-prompt]").forEach(button => button.addEventListener("click", () => sendMessage(button.dataset.prompt)));
-  document.querySelectorAll("[data-task-check]").forEach(input => input.addEventListener("change", () => { const task = data.tasks.find(x => x.id === input.dataset.taskCheck); if (task) { task.done = input.checked; saveData(); render(); toast(task.done ? "Task complete. Nice work." : "Task moved back to your list."); } }));
+  document.querySelectorAll("[data-thread-id]").forEach(button => button.addEventListener("click", () => openThread(button.dataset.threadId).catch(error => toast(error.message))));
   const form = document.querySelector("#chat-form");
   if (form) form.addEventListener("submit", event => { event.preventDefault(); const input = document.querySelector("#chat-input"); sendMessage(input.value); });
   const search = document.querySelector("#history-search");
@@ -229,6 +347,7 @@ async function sendMessage(text) {
     currentThreadId = answer.threadId || currentThreadId;
     document.querySelector("#typing-indicator")?.remove();
     data.messages.push({ role:"assistant", text:answer.text, meta:answer.meta, time:Date.now(), timeLabel:timeNow() }); saveData(); render();
+    loadThreads().catch(() => {});
     document.querySelector("#chat-messages").scrollTop = document.querySelector("#chat-messages").scrollHeight;
   } catch (error) {
     document.querySelector("#typing-indicator")?.remove();
@@ -286,32 +405,89 @@ function localAssistantReply(text) {
 }
 
 const entryConfig = {
-  workouts:{ kicker:"HEALTH / MOVEMENT", title:"Log a workout", fields:[["title","Activity","text","e.g. Run, strength training"],["duration","Duration","text","e.g. 30 minutes"],["detail","A note (optional)","textarea","How did it feel?"]] },
-  meals:{ kicker:"HEALTH / NUTRITION", title:"Log a meal", fields:[["title","What did you eat?","text","e.g. Lunch, smoothie"],["detail","A note (optional)","textarea","Anything you’d like to remember?"]] },
-  sleep:{ kicker:"HEALTH / REST", title:"Log your sleep", fields:[["title","Sleep duration","text","e.g. 7.5 hours"],["detail","A note (optional)","textarea","How rested do you feel?"]] },
-  tasks:{ kicker:"PRODUCTIVITY / TASKS", title:"Add a task", fields:[["title","What needs doing?","text","A clear, small next step"],["due","Due date (optional)","date",""],["detail","Notes (optional)","textarea","Add a little context"]] },
-  habits:{ kicker:"PRODUCTIVITY / HABITS", title:"Start a habit", fields:[["title","What would you like to practice?","text","e.g. Take a short walk"],["frequency","How often?","select","Daily|A few times a week|Weekly"],["detail","A note (optional)","textarea","Make it easy to begin"]] },
-  reflections:{ kicker:"PRODUCTIVITY / REFLECTION", title:"Save a reflection", fields:[["detail","What’s on your mind?","textarea","A small win, a thought, or something you learned"]] },
+  workouts:{ kicker:"HEALTH / MOVEMENT", title:"Log a workout", fields:[["workout_type","Activity","text","e.g. Run, strength training"],["duration_minutes","Duration in minutes","number","e.g. 30"],["calories_burned","Calories burned (optional)","number","e.g. 250"],["workout_date","Workout date","date",""] ,["notes","Notes (optional)","textarea","How did it feel?"]] },
+  meals:{ kicker:"HEALTH / NUTRITION", title:"Log a meal", fields:[["meal_type","Meal type","text","e.g. Breakfast, lunch, snack"],["description","What did you eat?","textarea","Describe your meal"],["calories","Calories (optional)","number","e.g. 500"],["meal_date","Meal date","date",""]] },
+  sleep:{ kicker:"HEALTH / REST", title:"Log your sleep", fields:[["sleep_date","Sleep date","date",""] ,["sleep_hours","Hours slept","number","e.g. 7.5"],["sleep_quality","Sleep quality","select","Poor|Okay|Good|Excellent"],["notes","Notes (optional)","textarea","How rested do you feel?"]] },
+  tasks:{ kicker:"PRODUCTIVITY / TASKS", title:"Add a task", fields:[["title","What needs doing?","text","A clear, small next step"],["description","Description (optional)","textarea","Add a little context"],["status","Status","select","pending|in progress|completed"],["priority","Priority","select","low|medium|high"],["due_date","Due date","date",""]] },
+  habits:{ kicker:"PRODUCTIVITY / HABITS", title:"Start a habit", fields:[["name","What would you like to practice?","text","e.g. Take a short walk"],["description","Description (optional)","textarea","Make it easy to begin"],["frequency","How often?","select","Daily|A few times a week|Weekly"],["target_count","Target count","number","e.g. 3"],["current_streak","Current streak","number","e.g. 0"],["longest_streak","Longest streak","number","e.g. 0"],["is_active","Active habit","checkbox",""]] },
+  reflections:{ kicker:"PRODUCTIVITY / REFLECTION", title:"Save a reflection", fields:[["content","What’s on your mind?","textarea","A small win, a thought, or something you learned"],["mood","Mood (optional)","select","Calm|Good|Tired|Stressed|Excited"],["reflection_date","Reflection date","date",""]] },
 };
 let activeEntryType = "";
+function openEntryChooser(domain) {
+  const choices = domain === "health"
+    ? [["workouts", "Workout", "Movement, duration, calories, and notes", "◉"], ["meals", "Meal", "Food, calories, and meal notes", "◌"], ["sleep", "Sleep", "Sleep duration, quality, and notes", "☾"]]
+    : [["tasks", "Task", "Title, status, priority, and due date", "⌘"], ["habits", "Habit", "Frequency, targets, and streak details", "✳"], ["reflections", "Reflection", "Thoughts, mood, and reflection date", "✎"]];
+
+  activeEntryType = "";
+  document.querySelector("#modal-kicker").textContent = domain === "health" ? "HEALTH / ADD TO YOUR LOG" : "PRODUCTIVITY / ADD TO YOUR FLOW";
+  document.querySelector("#modal-title").textContent = domain === "health" ? "What would you like to add?" : "What would you like to add?";
+  document.querySelector("#modal-fields").innerHTML = `<div class="entry-choice-list">${choices.map(([type, title, detail, icon]) => `<button class="entry-choice" type="button" data-entry-choice="${type}"><span class="entry-choice-icon">${icon}</span><span><strong>${title}</strong><small>${detail}</small></span><span>↗</span></button>`).join("")}</div>`;
+  document.querySelector("#modal-submit").hidden = true;
+  document.querySelector("#entry-modal").showModal();
+  document.querySelectorAll("[data-entry-choice]").forEach(button => button.addEventListener("click", () => {
+    document.querySelector("#entry-modal").close();
+    openEntry(button.dataset.entryChoice);
+  }));
+}
+
 function openEntry(type) {
   activeEntryType = type; const config = entryConfig[type]; if (!config) return;
+  document.querySelector("#modal-submit").hidden = false;
   document.querySelector("#modal-kicker").textContent = config.kicker; document.querySelector("#modal-title").textContent = config.title;
   document.querySelector("#modal-fields").innerHTML = config.fields.map(([name,label,kind,placeholder]) => {
     const id = `field-${name}`;
-    if (kind === "select") return `<label class="form-field"><span class="field-label">${label}</span><select class="form-input" name="${name}" id="${id}">${placeholder.split("|").map(x=>`<option>${x}</option>`).join("")}</select></label>`;
-    if (kind === "textarea") return `<label class="form-field"><span class="field-label">${label}</span><textarea class="form-input" name="${name}" id="${id}" rows="3" placeholder="${placeholder}"></textarea></label>`;
-    return `<label class="form-field"><span class="field-label">${label}</span><input class="form-input" name="${name}" id="${id}" type="${kind}" placeholder="${placeholder}" /></label>`;
+    const required = {
+      workouts: ["workout_type", "workout_date"],
+      meals: ["meal_type", "meal_date"],
+      sleep: ["sleep_date", "sleep_hours"],
+      tasks: ["title", "due_date"],
+      habits: ["name", "frequency"],
+      reflections: ["content", "reflection_date"],
+    }[activeEntryType]?.includes(name) ? " required" : "";
+    if (kind === "select") return `<label class="form-field"><span class="field-label">${label}</span><select class="form-input" name="${name}" id="${id}"${required}>${placeholder.split("|").map(x=>`<option>${x}</option>`).join("")}</select></label>`;
+    if (kind === "textarea") return `<label class="form-field"><span class="field-label">${label}</span><textarea class="form-input" name="${name}" id="${id}" rows="3" placeholder="${placeholder}"${required}></textarea></label>`;
+    return `<label class="form-field"><span class="field-label">${label}</span><input class="form-input" name="${name}" id="${id}" type="${kind}" placeholder="${placeholder}"${required} /></label>`;
   }).join("");
   document.querySelector("#entry-modal").showModal();
 }
-document.querySelector("#entry-form").addEventListener("submit", event => {
+function numberOrNull(value) { return value === "" || value == null ? null : Number(value); }
+
+function buildLogPayload(record) {
+  if (activeEntryType === "workouts") return { type:"workout", workout_type:record.workout_type, duration_minutes:numberOrNull(record.duration_minutes), calories_burned:numberOrNull(record.calories_burned), notes:record.notes || null, workout_date:record.workout_date };
+  if (activeEntryType === "meals") return { type:"meal", meal_type:record.meal_type, description:record.description || null, calories:numberOrNull(record.calories), meal_date:record.meal_date };
+  if (activeEntryType === "sleep") return { type:"sleep", sleep_date:record.sleep_date, sleep_hours:Number(record.sleep_hours), sleep_quality:record.sleep_quality || null, notes:record.notes || null };
+  if (activeEntryType === "tasks") return { type:"task", title:record.title, description:record.description || null, status:record.status, priority:record.priority, due_date:record.due_date };
+  if (activeEntryType === "habits") return { type:"habit", name:record.name, description:record.description || null, frequency:record.frequency, target_count:Number(record.target_count || 1), current_streak:Number(record.current_streak || 0), longest_streak:Number(record.longest_streak || 0), is_active:record.is_active === "on" };
+  return { type:"reflection", content:record.content, mood:record.mood || null, reflection_date:record.reflection_date };
+}
+
+async function saveStructuredEntry(record) {
+  const response = await authenticatedFetch("/logs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(buildLogPayload(record)),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.detail || `Could not save ${activeEntryType}`);
+  }
+  return response.json();
+}
+
+document.querySelector("#entry-form").addEventListener("submit", async event => {
   if (event.submitter?.value === "cancel") return;
   event.preventDefault(); const form = new FormData(event.currentTarget); const record = Object.fromEntries(form.entries());
-  if (!record.title && !record.detail) { toast("Add a little detail first."); return; }
-  const title = record.title || record.detail.slice(0,54);
-  const item = { id:id(), title, detail:record.detail || record.duration || "", createdAt:new Date().toISOString(), ...record, done:false };
-  data[activeEntryType].push(item); saveData(); document.querySelector("#entry-modal").close(); render(); toast("Saved. It’s part of your story now.");
+  const title = record.title || record.name || record.workout_type || record.meal_type || record.content || record.sleep_date || "New entry";
+  const detail = record.detail || record.description || record.notes || record.content || record.duration_minutes || record.sleep_hours || "";
+  try {
+    await saveStructuredEntry(record);
+    const item = { id:id(), title, detail, createdAt:new Date().toISOString(), ...record, done:false };
+    data[activeEntryType].push(item); saveData(); document.querySelector("#entry-modal").close(); render();
+    loadBackendLogs().catch(() => {});
+    toast("Saved to your Nexus account.");
+  } catch (error) {
+    toast(error.message);
+  }
 });
 
 document.querySelectorAll(".nav-link").forEach(button => button.addEventListener("click", () => setView(button.dataset.view)));

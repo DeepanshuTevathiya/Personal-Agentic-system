@@ -136,7 +136,7 @@ def db_task_tool(
         "description": description,
         "status": status,
         "priority": priority,
-        "due_date": due_date.isoformat()
+        "due_date": due_date.isoformat() if due_date else None
     }
 
     result = supabase.table("tasks").insert(data).execute()
