@@ -34,7 +34,7 @@ def log_workout(
     )
 
     # Saving to memory table
-    workout_id = result[0]["id"]
+    workout_id = result[0]["id"] # type: ignore
 
     memory_content = (
          f"Workout: {workout.workout_type}."
@@ -47,7 +47,7 @@ def log_workout(
     store_memory(
          user_id=user_id,
          source_type="workouts",
-         source_id=workout_id,
+         source_id=workout_id, #type: ignore
          content=memory_content
      )
     
@@ -81,7 +81,7 @@ def log_meal(
     )
 
     #Store in memory
-    meal_id = result[0]["id"]
+    meal_id = result[0]["id"]#type: ignore
 
     memory_content = (
          f"Meal: {meal.meal_type}. "
@@ -93,7 +93,7 @@ def log_meal(
     store_memory(
          user_id=user_id,
          source_type="meals",
-         source_id=meal_id,
+         source_id=meal_id,#type: ignore
          content=memory_content
      )
 
@@ -129,7 +129,7 @@ def log_sleep(
     )
 
     # Store in memory
-    sleep_id = result[0]["id"]
+    sleep_id = result[0]["id"]#type: ignore
 
     memory_content = (
         f"Sleep: {sleep.sleep_hour} hours. "
@@ -141,7 +141,7 @@ def log_sleep(
     store_memory(
          user_id=user_id,
          source_type="sleep_logs",
-         source_id=sleep_id,
+         source_id=sleep_id,#type: ignore
          content=memory_content
      )
 

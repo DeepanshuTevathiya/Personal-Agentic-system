@@ -8,6 +8,8 @@ const supabaseClient = window.supabase && SUPABASE_URL && SUPABASE_ANON_KEY
 const initialData = {
   messages: [{ role: "assistant", text: "Hey, I’m Nexus. I can help you keep your health and productivity in sync. What’s on your mind?", time: Date.now() }],
   workouts: [], meals: [], sleep: [], tasks: [], habits: [], reflections: [],
+  hiddenThreadIds: [],
+  threadTitles: {},
 };
 let data = loadData();
 let currentView = "chat";
@@ -18,6 +20,7 @@ let toastTimer;
 let session = null;
 let currentThreadId = null;
 let threads = [];
+let openThreadMenuId = null;
 let backendLogs = { health: [], productivity: [] };
 let authMode = "signin";
 
@@ -150,6 +153,7 @@ async function loadThreads() {
   if (!response.ok) throw new Error(`Thread request failed (${response.status})`);
   const payload = await response.json();
   threads = payload.threads || [];
+  renderRecentChats();
   if (currentView === "history") render();
 }
 
@@ -219,6 +223,7 @@ async function openThread(threadId) {
   if (!response.ok) throw new Error(`Message request failed (${response.status})`);
   const payload = await response.json();
   currentThreadId = payload.thread_id;
+  openThreadMenuId = null;
   data.messages = (payload.messages || []).map(message => ({
     role: message.role === "human" ? "user" : message.role === "ai" ? "assistant" : message.role,
     text: message.content,
@@ -227,6 +232,66 @@ async function openThread(threadId) {
   }));
   saveData();
   setView("chat");
+  renderRecentChats();
+}
+
+function visibleThreads() {
+  const hiddenThreadIds = new Set(data.hiddenThreadIds || []);
+  return threads.filter(thread => !hiddenThreadIds.has(String(thread.id)));
+}
+
+function getThreadTitle(thread) {
+  return thread.title || data.threadTitles?.[String(thread.id)] || "Untitled conversation";
+}
+
+function renderRecentChats() {
+  const list = document.querySelector("#recent-chats");
+  if (!list) return;
+
+  const recentThreads = visibleThreads().slice(0, 8);
+  list.innerHTML = recentThreads.length
+    ? recentThreads.map(thread => {
+        const threadId = String(thread.id);
+        const isActive = threadId === String(currentThreadId);
+        const menuIsOpen = threadId === openThreadMenuId;
+        const title = getThreadTitle(thread);
+        return `<div class="recent-chat-item ${isActive ? "active" : ""}">
+          <button class="recent-chat-open" type="button" data-sidebar-thread-id="${esc(threadId)}" title="${esc(title)}"><span>◷</span><strong>${esc(title)}</strong></button>
+          <button class="thread-more-button" type="button" data-thread-menu="${esc(threadId)}" aria-label="Chat options">•••</button>
+          ${menuIsOpen ? `<div class="thread-menu"><button type="button" data-hide-thread="${esc(threadId)}">Delete chat</button></div>` : ""}
+        </div>`;
+      }).join("")
+    : `<p class="recent-chat-empty">Your recent chats will appear here.</p>`;
+
+  list.querySelectorAll("[data-sidebar-thread-id]").forEach(button => {
+    button.addEventListener("click", () => openThread(button.dataset.sidebarThreadId).catch(error => toast(error.message)));
+  });
+  list.querySelectorAll("[data-thread-menu]").forEach(button => {
+    button.addEventListener("click", event => {
+      event.stopPropagation();
+      openThreadMenuId = button.dataset.threadMenu;
+      renderRecentChats();
+    });
+  });
+  list.querySelectorAll("[data-hide-thread]").forEach(button => {
+    button.addEventListener("click", () => hideThreadFromSidebar(button.dataset.hideThread));
+  });
+}
+
+function hideThreadFromSidebar(threadId) {
+  data.hiddenThreadIds = [...new Set([...(data.hiddenThreadIds || []), String(threadId)])];
+  openThreadMenuId = null;
+
+  if (String(currentThreadId) === String(threadId)) {
+    currentThreadId = null;
+    data.messages = structuredClone(initialData.messages);
+    setView("chat");
+  }
+
+  saveData();
+  renderRecentChats();
+  if (currentView === "history") render();
+  toast("Chat removed from this browser.");
 }
 
 function loadData() {
@@ -259,12 +324,25 @@ function render() {
   const root = document.querySelector("#view-host");
   root.innerHTML = currentView === "chat" ? renderChat() : currentView === "health" ? renderHealth() : currentView === "productivity" ? renderProductivity() : renderHistory();
   bindViewEvents();
+  if (currentView === "chat") requestAnimationFrame(scrollChatToLatest);
 }
+
+function scrollChatToLatest() {
+  const messages = document.querySelector("#chat-messages");
+  if (messages) messages.scrollTop = messages.scrollHeight;
+}
+
+function renderAssistantMarkdown(text) {
+  if (!window.marked || !window.DOMPurify) return esc(text);
+  const html = window.marked.parse(String(text), { breaks: true });
+  return window.DOMPurify.sanitize(html);
+}
+
 function renderChat() {
   const suggestions = ["How have I been sleeping lately?", "What should I focus on today?", "I worked out for 30 minutes", "Show how my health and work are going"];
-  const messages = data.messages.map(message => `<article class="message ${message.role}">${message.role === "assistant" && message.meta ? `<div class="message-meta">✦ ${esc(message.meta)}</div>` : ""}<div class="message-bubble">${esc(message.text)}</div><span class="message-time">${esc(message.timeLabel || timeNow())}</span></article>`).join("");
+  const messages = data.messages.map(message => `<article class="message ${message.role}">${message.role === "assistant" && message.meta ? `<div class="message-meta">✦ ${esc(message.meta)}</div>` : ""}<div class="message-bubble">${message.role === "assistant" ? renderAssistantMarkdown(message.text) : esc(message.text)}</div><span class="message-time">${esc(message.timeLabel || timeNow())}</span></article>`).join("");
   return `${header("YOUR PERSONAL CHIEF OF STAFF", `A little more <span class="heading-accent">in sync.</span>`, "One place for your health, your work, and everything between.")}
-    <div class="chat-layout"><section class="chat-panel"><div class="chat-topline"><div class="chat-agent"><span class="online-dot"></span>Nexus assistant</div><span class="eyebrow">READY WHEN YOU ARE</span></div><div class="chat-messages" id="chat-messages">${messages}</div><form class="chat-compose" id="chat-form"><div class="compose-box"><textarea id="chat-input" rows="1" placeholder="Tell Nexus what’s on your mind…" aria-label="Message Nexus"></textarea><button class="send-button" aria-label="Send message">↗</button></div><div class="compose-hint"><span>ENTER TO SEND</span><span>YOUR DATA STAYS ON THIS DEVICE</span></div></form></section>
+    <div class="chat-layout"><section class="chat-panel"><div class="chat-topline"><div class="chat-agent"><span class="online-dot"></span>Nexus assistant</div><span class="eyebrow">READY WHEN YOU ARE</span></div><div class="chat-messages" id="chat-messages">${messages}</div><form class="chat-compose" id="chat-form"><div class="compose-box"><textarea id="chat-input" rows="1" placeholder="Tell Nexus what’s on your mind…" aria-label="Message Nexus"></textarea><button class="send-button" aria-label="Send message">↗</button></div><div class="compose-hint"><span>ENTER TO SEND · SHIFT + ENTER FOR NEW LINE</span><span>YOUR DATA STAYS ON THIS DEVICE</span></div></form></section>
     <aside class="suggestion-panel"><span class="eyebrow">A GOOD PLACE TO START</span><h3>Try asking</h3><div class="suggestion-list">${suggestions.map(s => `<button class="suggestion" data-prompt="${esc(s)}">${esc(s)} <span aria-hidden="true">↗</span></button>`).join("")}</div><div class="mini-summary"><p>A quick snapshot</p><div class="domain-dots"><span><i></i>${data.workouts.length + data.meals.length + data.sleep.length} health</span><span><i></i>${data.tasks.length + data.habits.length} productivity</span></div></div></aside></div>`;
 }
 function renderHealth() {
@@ -313,11 +391,12 @@ function historyRows() {
 function renderHistory() {
   const records = historyRows();
   const rows = records.length ? records.map(item => `<tr><td><span class="tag ${item.domain}">${item.domain}</span></td><td><span class="history-title">${item.glyph} &nbsp;${esc(item.title)}</span><span class="history-detail">${esc(item.detail || item.kind)}</span></td><td>${fmtDate(item.createdAt,{month:"short",day:"numeric",year:"numeric"})}</td></tr>`).join("") : `<tr><td colspan="3">${emptyState("◷","No matching activity","Try another filter or add a new entry.")}</td></tr>`;
-  const threadRows = threads.length
-    ? threads.map(thread => `<button class="thread-row" type="button" data-thread-id="${esc(thread.id)}"><span class="thread-icon">◷</span><span class="thread-copy"><strong>${esc(thread.title || "Untitled conversation")}</strong><small>${thread.updated_at ? fmtDate(thread.updated_at,{month:"short",day:"numeric",year:"numeric"}) : "Conversation"}</small></span><span>↗</span></button>`).join("")
+  const visibleThreadItems = visibleThreads();
+  const threadRows = visibleThreadItems.length
+    ? visibleThreadItems.map(thread => `<button class="thread-row" type="button" data-thread-id="${esc(thread.id)}"><span class="thread-icon">◷</span><span class="thread-copy"><strong>${esc(getThreadTitle(thread))}</strong><small>${thread.updated_at ? fmtDate(thread.updated_at,{month:"short",day:"numeric",year:"numeric"}) : "Conversation"}</small></span><span>↗</span></button>`).join("")
     : emptyState("◷", "No saved conversations yet", "Send a chat message to create your first thread.");
   return `${header("HISTORY / THE THROUGH LINE", `Your days, <span class="heading-accent">in view.</span>`, "A combined timeline of the things you’ve logged and worked on.")}
-    <section class="section-card thread-card"><div class="section-card-head"><h2>Conversations</h2><span>${threads.length} ${threads.length === 1 ? "THREAD" : "THREADS"}</span></div><div class="thread-list">${threadRows}</div></section>
+    <section class="section-card thread-card"><div class="section-card-head"><h2>Conversations</h2><span>${visibleThreadItems.length} ${visibleThreadItems.length === 1 ? "THREAD" : "THREADS"}</span></div><div class="thread-list">${threadRows}</div></section>
     <div class="filters"><input class="search-control" id="history-search" type="search" placeholder="⌕  Search your history…" value="${esc(historyFilters.search)}" aria-label="Search history"><select class="control" id="history-domain" aria-label="Filter by category"><option value="all">All activity</option><option value="health" ${historyFilters.domain==="health"?"selected":""}>Health</option><option value="productivity" ${historyFilters.domain==="productivity"?"selected":""}>Productivity</option></select><select class="control" id="history-range" aria-label="Filter by date"><option value="all">Any time</option><option value="week" ${historyFilters.range==="week"?"selected":""}>Past 7 days</option><option value="month" ${historyFilters.range==="month"?"selected":""}>Past 30 days</option></select></div>
     <section class="section-card"><div class="section-card-head"><h2>Recent activity</h2><span>${records.length} ${records.length===1?"RECORD":"RECORDS"}</span></div><div class="card-body" style="padding:0"><table class="history-table"><thead><tr><th>Area</th><th>Activity</th><th>Date</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
 }
@@ -329,12 +408,37 @@ function bindViewEvents() {
   document.querySelectorAll("[data-productivity-tab]").forEach(button => button.addEventListener("click", () => { productivityTab = button.dataset.productivityTab; render(); }));
   document.querySelectorAll("[data-prompt]").forEach(button => button.addEventListener("click", () => sendMessage(button.dataset.prompt)));
   document.querySelectorAll("[data-thread-id]").forEach(button => button.addEventListener("click", () => openThread(button.dataset.threadId).catch(error => toast(error.message))));
+  document.querySelector("[data-new-chat]")?.addEventListener("click", startNewChat);
   const form = document.querySelector("#chat-form");
-  if (form) form.addEventListener("submit", event => { event.preventDefault(); const input = document.querySelector("#chat-input"); sendMessage(input.value); });
+  if (form) {
+    form.addEventListener("submit", event => {
+      event.preventDefault();
+      const input = document.querySelector("#chat-input");
+      sendMessage(input.value);
+    });
+
+    const input = document.querySelector("#chat-input");
+    input?.addEventListener("keydown", event => {
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        form.requestSubmit();
+      }
+    });
+  }
   const search = document.querySelector("#history-search");
   if (search) search.addEventListener("input", () => { historyFilters.search = search.value; const pos = search.selectionStart; render(); const next = document.querySelector("#history-search"); next.focus(); next.setSelectionRange(pos,pos); });
   const domain = document.querySelector("#history-domain"); if (domain) domain.addEventListener("change", () => { historyFilters.domain = domain.value; render(); });
   const range = document.querySelector("#history-range"); if (range) range.addEventListener("change", () => { historyFilters.range = range.value; render(); });
+}
+
+function startNewChat() {
+  currentThreadId = null;
+  openThreadMenuId = null;
+  data.messages = structuredClone(initialData.messages);
+  saveData();
+  render();
+  renderRecentChats();
+  toast("New chat ready.");
 }
 
 async function sendMessage(text) {
@@ -344,7 +448,12 @@ async function sendMessage(text) {
   const box = document.querySelector("#chat-messages"); box.insertAdjacentHTML("beforeend", `<div class="message assistant" id="typing-indicator"><div class="typing"><span></span><span></span><span></span></div></div>`); box.scrollTop = box.scrollHeight;
   try {
     const answer = await requestAssistantReply(value);
-    currentThreadId = answer.threadId || currentThreadId;
+    const resolvedThreadId = answer.threadId || currentThreadId;
+    if (resolvedThreadId && !data.threadTitles?.[String(resolvedThreadId)]) {
+      data.threadTitles = data.threadTitles || {};
+      data.threadTitles[String(resolvedThreadId)] = value.slice(0, 56);
+    }
+    currentThreadId = resolvedThreadId;
     document.querySelector("#typing-indicator")?.remove();
     data.messages.push({ role:"assistant", text:answer.text, meta:answer.meta, time:Date.now(), timeLabel:timeNow() }); saveData(); render();
     loadThreads().catch(() => {});

@@ -3,7 +3,7 @@
 from langchain_core.messages import AIMessage, HumanMessage
 
 ## Get the common conversation history
-def build_clean_history(messages, max_turns=3):
+def build_clean_history(messages, max_turns=4):
     # Find the latest user request.
     current_index = next(
         (

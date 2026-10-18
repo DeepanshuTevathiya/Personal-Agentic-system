@@ -54,7 +54,7 @@ def retrieve_memories(
     result = supabase.rpc(
         "match_memories",
         {
-            "query_embedding": query_embedding  ,
+            "query_embedding": query_embedding,
             "match_user_id": user_id,
             "match_count": top_k,
             "match_source_types": source_types

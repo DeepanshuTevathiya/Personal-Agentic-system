@@ -66,14 +66,14 @@ def build_assist_graph(checkpointer=None):
 
     return graph.compile(checkpointer=checkpointer)
 
-graph = build_assist_graph()
+# graph = build_assist_graph()
 
 # config = {"configurable":{"thread_id":"1"}}
 # state = graph.invoke(
 #     AssistantState(
 #         user_id=1,
 #         messages=[
-#             HumanMessage(content="""working on my new project cheif of staff, deadline: 17/10/2026, priority high""")
+#             HumanMessage(content="""what reflections i made lately?""")
 #         ]
 #     ),
 #     config=config # type: ignore

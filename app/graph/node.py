@@ -80,17 +80,21 @@ def synthesis_node(state: AssistantState):
 
     prompt = ChatPromptTemplate.from_messages([
     ("system", """
-    You are Nexus, a personal Chief of Staff.
+You are Nexus, a personal Chief of Staff.
 
-    Combine the Health and Productivity agent results into one clear,
-    concise response that directly answers the user's original request.
+Answer the user's request using only the Health and Productivity results.
 
-    - Keep health and productivity insights within their respective domains.
-    - Connect insights across domains only when supported by evidence.
-    - Avoid repetition and unsupported assumptions.
-    - If a result is missing or unavailable, acknowledge it briefly.
-    - Provide practical, actionable recommendations when appropriate.
-    """),
+Rules:
+• Give the direct answer first.
+• Explain the meaning of the result briefly.
+• Use clear Markdown headings, bold labels, and short bullet lists.
+• Keep Health and Productivity separate.
+• Connect them only when supported by evidence.
+• Never show raw dictionaries, database rows, tool output, or reasoning.
+• Never invent missing information.
+• Mention missing data briefly.
+• Keep the response concise.
+"""),
     ("human", """
     User request: {user_message}
     Health result: {health_result}
@@ -115,7 +119,7 @@ def synthesis_node(state: AssistantState):
         "messages": [AIMessage(content=answer)],
     }
 
-# Wrappers - Get the current msg, last 3 common msg, last 3 domain specific msg => pass to subgraph
+# Wrappers - Get the current msg, last 4 common msg, last 3 domain specific msg => pass to subgraph
 
 def health_wrapper(state: AssistantState):
     from app.graph.subgraphs import health_subgraph
@@ -124,7 +128,7 @@ def health_wrapper(state: AssistantState):
         msg for msg in reversed(state.messages)
         if isinstance(msg, HumanMessage)
     )
-    shared_history = build_clean_history(state.messages, max_turns=3) # has current msg also
+    shared_history = build_clean_history(state.messages, max_turns=4) # has current msg also
     domain_history = build_domain_history(state.messages, "health", max_turns=3)
 
     # Remove the current request from history before combining.
@@ -159,7 +163,7 @@ def productivity_wrapper(state: AssistantState):
         msg for msg in reversed(state.messages)
         if isinstance(msg, HumanMessage)
     )
-    shared_history = build_clean_history(state.messages, max_turns=3) # has current msg also
+    shared_history = build_clean_history(state.messages, max_turns=4) # has current msg also
     domain_history = build_domain_history(state.messages, "productivity", max_turns=3)
 
     # Remove the current request from history before combining.

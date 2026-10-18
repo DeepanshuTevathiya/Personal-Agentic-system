@@ -16,3 +16,4 @@ PyJWT[crypto]
 httpx
 langgraph-checkpoint-postgres
 psycopg[binary,pool]
+laya

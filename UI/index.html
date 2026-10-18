@@ -9,7 +9,30 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="./styles.css" />
+    <style>
+      .chat-nav-row { position: relative; }
+      .chat-nav-row .nav-link { width: 100%; }
+      .main-nav > .nav-link { width: 100%; }
+      .new-chat-sidebar { position: absolute; top: 50%; right: 9px; transform: translateY(-50%); width: 30px; height: 30px; border: 1px solid var(--ink); border-radius: 8px; background: #fff; color: var(--ink); box-shadow: 2px 2px 0 var(--ink); font-size: 20px; line-height: 1; cursor: pointer; }
+      .new-chat-sidebar:hover { background: var(--lime); }
+      .recent-chat-section { margin-top: 18px; }
+      .recent-chat-section .workspace-label { margin: 0 8px 10px; display: block; }
+      .recent-chat-list { display: grid; gap: 4px; max-height: 188px; overflow-y: auto; padding: 0 1px; }
+      .recent-chat-item { position: relative; display: flex; align-items: center; min-width: 0; }
+      .recent-chat-open { min-width: 0; width: 100%; display: flex; align-items: center; gap: 8px; border: 0; border-radius: 8px; background: transparent; padding: 8px 35px 8px 10px; color: #5d5d66; text-align: left; cursor: pointer; }
+      .recent-chat-open:hover, .recent-chat-item.active .recent-chat-open { background: var(--soft); color: var(--ink); }
+      .recent-chat-open span { flex: none; color: var(--green); font-size: 12px; }
+      .recent-chat-open strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; }
+      .thread-more-button { position: absolute; right: 5px; border: 0; background: transparent; color: var(--muted); font-size: 15px; letter-spacing: 1px; cursor: pointer; }
+      .thread-more-button:hover { color: var(--ink); }
+      .thread-menu { position: absolute; right: 3px; top: 33px; z-index: 10; width: 116px; padding: 4px; border: 1px solid var(--ink); border-radius: 8px; background: #fff; box-shadow: 2px 3px 0 var(--ink); }
+      .thread-menu button { width: 100%; border: 0; border-radius: 5px; background: transparent; padding: 8px; color: #b42318; text-align: left; font-size: 12px; cursor: pointer; }
+      .thread-menu button:hover { background: #fff2f0; }
+      .recent-chat-empty { margin: 0 9px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+    </style>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.6/dist/purify.min.js"></script>
     <script src="./config.js"></script>
     <script defer src="./app.js"></script>
   </head>
@@ -38,11 +61,18 @@
         </a>
         <div class="workspace-label eyebrow">YOUR WORKSPACE</div>
         <nav class="main-nav" aria-label="Main navigation">
-          <button class="nav-link active" data-view="chat"><span class="nav-icon">✳</span><span>Chat</span><span class="nav-key">⌘ 1</span></button>
+          <div class="chat-nav-row">
+            <button class="nav-link active" data-view="chat"><span class="nav-icon">✳</span><span>Chat</span></button>
+            <button class="new-chat-sidebar" type="button" data-new-chat aria-label="Start a new chat" title="New chat">+</button>
+          </div>
           <button class="nav-link" data-view="health"><span class="nav-icon">♡</span><span>Health</span></button>
           <button class="nav-link" data-view="productivity"><span class="nav-icon">⌘</span><span>Productivity</span></button>
           <button class="nav-link" data-view="history"><span class="nav-icon">◷</span><span>History</span></button>
         </nav>
+        <section class="recent-chat-section" aria-labelledby="recent-chats-label">
+          <span class="workspace-label eyebrow" id="recent-chats-label">LAST CHATS</span>
+          <div class="recent-chat-list" id="recent-chats"></div>
+        </section>
         <div class="sidebar-divider"></div>
         <section class="sidebar-note">
           <div class="note-spark">✦</div>
