@@ -18,7 +18,7 @@ from app.tools.productivity_tools import (
     habit_tool,
     task_tool,
     complete_task,
-    get_tasks,
+    # get_tasks,
     reflection_tool,
     retrieve_productivity_data,
 )
@@ -52,7 +52,7 @@ def build_productivity_subgraph():
     graph.add_node("productivity", productivity_node)
     graph.add_node(
         "productivity_tools",
-        ToolNode([habit_tool, task_tool, complete_task, get_tasks, reflection_tool, retrieve_productivity_data])
+        ToolNode([habit_tool, task_tool, complete_task,  reflection_tool, retrieve_productivity_data])
     )
 
     graph.add_edge(START, "productivity")

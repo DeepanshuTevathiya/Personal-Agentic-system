@@ -10,6 +10,7 @@ const initialData = {
   workouts: [], meals: [], sleep: [], tasks: [], habits: [], reflections: [],
   hiddenThreadIds: [],
   threadTitles: {},
+  activeThreadId: null,
 };
 let data = loadData();
 let currentView = "chat";
@@ -19,6 +20,7 @@ let productivityTab = "tasks";
 let toastTimer;
 let session = null;
 let currentThreadId = null;
+let sessionUserId = null;
 let threads = [];
 let openThreadMenuId = null;
 let backendLogs = { health: [], productivity: [] };
@@ -117,16 +119,21 @@ async function boot() {
 
   const { data } = await supabaseClient.auth.getSession();
   session = data.session;
+  sessionUserId = session?.user?.id || null;
   updateAuthScreen();
   if (session) {
+    beginNewAppChat();
     render();
     loadThreads().catch(() => {});
     loadBackendLogs().catch(error => toast(error.message));
   }
 
   supabaseClient.auth.onAuthStateChange((_event, nextSession) => {
+    const nextUserId = nextSession?.user?.id || null;
+    const userChanged = nextUserId !== sessionUserId;
     session = nextSession;
-    currentThreadId = null;
+    sessionUserId = nextUserId;
+    if (userChanged) beginNewAppChat();
     updateAuthScreen();
     if (session) {
       render();
@@ -223,6 +230,7 @@ async function openThread(threadId) {
   if (!response.ok) throw new Error(`Message request failed (${response.status})`);
   const payload = await response.json();
   currentThreadId = payload.thread_id;
+  data.activeThreadId = currentThreadId;
   openThreadMenuId = null;
   data.messages = (payload.messages || []).map(message => ({
     role: message.role === "human" ? "user" : message.role === "ai" ? "assistant" : message.role,
@@ -284,6 +292,7 @@ function hideThreadFromSidebar(threadId) {
 
   if (String(currentThreadId) === String(threadId)) {
     currentThreadId = null;
+    data.activeThreadId = null;
     data.messages = structuredClone(initialData.messages);
     setView("chat");
   }
@@ -433,6 +442,7 @@ function bindViewEvents() {
 
 function startNewChat() {
   currentThreadId = null;
+  data.activeThreadId = null;
   openThreadMenuId = null;
   data.messages = structuredClone(initialData.messages);
   saveData();
@@ -443,17 +453,19 @@ function startNewChat() {
 
 async function sendMessage(text) {
   const value = text.trim(); if (!value) return;
+  const threadIdForRequest = currentThreadId || data.activeThreadId || null;
   data.messages.push({ role:"user", text:value, time:Date.now(), timeLabel:timeNow() });
   saveData(); render();
   const box = document.querySelector("#chat-messages"); box.insertAdjacentHTML("beforeend", `<div class="message assistant" id="typing-indicator"><div class="typing"><span></span><span></span><span></span></div></div>`); box.scrollTop = box.scrollHeight;
   try {
-    const answer = await requestAssistantReply(value);
-    const resolvedThreadId = answer.threadId || currentThreadId;
+    const answer = await requestAssistantReply(value, threadIdForRequest);
+    const resolvedThreadId = answer.threadId || threadIdForRequest;
     if (resolvedThreadId && !data.threadTitles?.[String(resolvedThreadId)]) {
       data.threadTitles = data.threadTitles || {};
       data.threadTitles[String(resolvedThreadId)] = value.slice(0, 56);
     }
     currentThreadId = resolvedThreadId;
+    data.activeThreadId = currentThreadId;
     document.querySelector("#typing-indicator")?.remove();
     data.messages.push({ role:"assistant", text:answer.text, meta:answer.meta, time:Date.now(), timeLabel:timeNow() }); saveData(); render();
     loadThreads().catch(() => {});
@@ -463,7 +475,14 @@ async function sendMessage(text) {
     data.messages.push({ role:"assistant", text:"I can’t reach the Nexus API yet. Start the FastAPI server, then run the UI server with `node server.js` from this UI folder.", meta:"CONNECTION NEEDED", time:Date.now(), timeLabel:timeNow() }); saveData(); render();
   }
 }
-async function requestAssistantReply(message) {
+
+function beginNewAppChat() {
+  currentThreadId = null;
+  data.activeThreadId = null;
+  data.messages = structuredClone(initialData.messages);
+  saveData();
+}
+async function requestAssistantReply(message, threadId) {
   if (!supabaseClient) throw new Error("Supabase client is not configured");
   const { data } = await supabaseClient.auth.getSession();
   const accessToken = data.session?.access_token;
@@ -477,7 +496,7 @@ async function requestAssistantReply(message) {
     },
     body: JSON.stringify({
       message,
-      thread_id: currentThreadId,
+      thread_id: threadId,
     }),
   });
   if (!response.ok) throw new Error(`Chat request failed (${response.status})`);
