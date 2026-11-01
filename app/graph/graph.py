@@ -8,6 +8,7 @@ from app.graph.node import (
     health_wrapper,
     productivity_wrapper,
     reset_results,
+    general_node,
     finalize_single_domain,
     synthesis_node
 )
@@ -15,7 +16,7 @@ from app.graph.node import (
 # load_dotenv()
 
 def route_after_classification(state: AssistantState):
-    if state.request_type in {"health", "productivity", "both"}:
+    if state.request_type in {"health", "productivity", "both", "general"}:
         return state.request_type
 
     raise ValueError(f"Invalid request type: {state.request_type!r}")
@@ -31,6 +32,7 @@ def build_assist_graph(checkpointer=None):
     graph.add_node("route", route_node)
     graph.add_node("health", health_wrapper)
     graph.add_node("productivity", productivity_wrapper)
+    graph.add_node("general", general_node)
     graph.add_node("dispatch_both", dispatch_both)
     graph.add_node("health_both", health_wrapper)
     graph.add_node("productivity_both", productivity_wrapper)
@@ -47,6 +49,7 @@ def build_assist_graph(checkpointer=None):
             "health": "health",
             "productivity": "productivity",
             "both": "dispatch_both",
+            "general": "general",
         }
     )
 
@@ -63,10 +66,11 @@ def build_assist_graph(checkpointer=None):
 
     graph.add_edge("finalize", END)
     graph.add_edge("synthesis", END)
+    graph.add_edge("general", END)
 
     return graph.compile(checkpointer=checkpointer)
 
-# graph = build_assist_graph()
+graph = build_assist_graph()
 
 # config = {"configurable":{"thread_id":"1"}}
 # state = graph.invoke(

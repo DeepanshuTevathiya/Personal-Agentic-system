@@ -349,7 +349,7 @@ function renderAssistantMarkdown(text) {
 
 function renderChat() {
   const suggestions = ["How have I been sleeping lately?", "What should I focus on today?", "I worked out for 30 minutes", "Show how my health and work are going"];
-  const messages = data.messages.map(message => `<article class="message ${message.role}">${message.role === "assistant" && message.meta ? `<div class="message-meta">✦ ${esc(message.meta)}</div>` : ""}<div class="message-bubble">${message.role === "assistant" ? renderAssistantMarkdown(message.text) : esc(message.text)}</div><span class="message-time">${esc(message.timeLabel || timeNow())}</span></article>`).join("");
+  const messages = data.messages.map(message => `<article class="message ${message.role}">${message.role === "assistant" && message.meta ? `<div class="message-meta">${message.icon ? `<span class="material-symbols-outlined">${esc(message.icon)}</span>` : "✦"} ${esc(message.meta)}</div>` : ""}<div class="message-bubble">${message.role === "assistant" ? renderAssistantMarkdown(message.text) : esc(message.text)}</div><span class="message-time">${esc(message.timeLabel || timeNow())}</span></article>`).join("");
   return `${header("YOUR PERSONAL CHIEF OF STAFF", `A little more <span class="heading-accent">in sync.</span>`, "One place for your health, your work, and everything between.")}
     <div class="chat-layout"><section class="chat-panel"><div class="chat-topline"><div class="chat-agent"><span class="online-dot"></span>Nexus assistant</div><span class="eyebrow">READY WHEN YOU ARE</span></div><div class="chat-messages" id="chat-messages">${messages}</div><form class="chat-compose" id="chat-form"><div class="compose-box"><textarea id="chat-input" rows="1" placeholder="Tell Nexus what’s on your mind…" aria-label="Message Nexus"></textarea><button class="send-button" aria-label="Send message">↗</button></div><div class="compose-hint"><span>ENTER TO SEND · SHIFT + ENTER FOR NEW LINE</span><span>YOUR DATA STAYS ON THIS DEVICE</span></div></form></section>
     <aside class="suggestion-panel"><span class="eyebrow">A GOOD PLACE TO START</span><h3>Try asking</h3><div class="suggestion-list">${suggestions.map(s => `<button class="suggestion" data-prompt="${esc(s)}">${esc(s)} <span aria-hidden="true">↗</span></button>`).join("")}</div><div class="mini-summary"><p>A quick snapshot</p><div class="domain-dots"><span><i></i>${data.workouts.length + data.meals.length + data.sleep.length} health</span><span><i></i>${data.tasks.length + data.habits.length} productivity</span></div></div></aside></div>`;
@@ -453,6 +453,11 @@ function startNewChat() {
 
 async function sendMessage(text) {
   const value = text.trim(); if (!value) return;
+  if (value.length > 1000) {
+    data.messages.push({ role:"assistant", text:"Your message is too long. Please keep it under 1,000 characters.", meta:"MESSAGE TOO LONG", time:Date.now(), timeLabel:timeNow() });
+    saveData(); render();
+    return;
+  }
   const threadIdForRequest = currentThreadId || data.activeThreadId || null;
   data.messages.push({ role:"user", text:value, time:Date.now(), timeLabel:timeNow() });
   saveData(); render();
@@ -472,7 +477,21 @@ async function sendMessage(text) {
     document.querySelector("#chat-messages").scrollTop = document.querySelector("#chat-messages").scrollHeight;
   } catch (error) {
     document.querySelector("#typing-indicator")?.remove();
-    data.messages.push({ role:"assistant", text:"I can’t reach the Nexus API yet. Start the FastAPI server, then run the UI server with `node server.js` from this UI folder.", meta:"CONNECTION NEEDED", time:Date.now(), timeLabel:timeNow() }); saveData(); render();
+    const isHttpError = Number.isInteger(error?.status);
+    const isTooLong = error?.status === 422 && value.length > 1000;
+    data.messages.push({
+      role:"assistant",
+      text:isTooLong
+        ? "Your message is too long. Please keep it under 1,000 characters."
+        : isHttpError
+          ? error.message
+          : "Try again, service under maintenance.",
+      meta:isHttpError ? "REQUEST COULD NOT BE COMPLETED" : "CONNECTION NEEDED",
+      ...(!isHttpError ? { icon:"engineering" } : {}),
+      time:Date.now(),
+      timeLabel:timeNow()
+    });
+    saveData(); render();
   }
 }
 
@@ -499,7 +518,16 @@ async function requestAssistantReply(message, threadId) {
       thread_id: threadId,
     }),
   });
-  if (!response.ok) throw new Error(`Chat request failed (${response.status})`);
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    const error = new Error(
+      typeof payload.detail === "string"
+        ? payload.detail
+        : `Request failed (${response.status}).`
+    );
+    error.status = response.status;
+    throw error;
+  }
   const payload = await response.json();
   return {
     text: payload.response,

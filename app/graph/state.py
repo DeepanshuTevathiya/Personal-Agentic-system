@@ -6,7 +6,7 @@ class AssistantState(BaseModel):
     messages: Annotated[list[AnyMessage], add_messages] = Field(default_factory=list)
     user_id: int
 
-    request_type: Literal["health", "productivity", "both"] | None=None
+    request_type: Literal["health", "productivity", "both", "general"] | None=None
 
     health_result: str = ""
     productivity_result: str = ""

@@ -1,3 +1,4 @@
+import os
 import json
 import asyncio
 from typing import Annotated, Literal, Union
@@ -11,12 +12,16 @@ from pydantic import BaseModel, Field
 from contextlib import asynccontextmanager
 
 from app.services.auth import AuthenticatedUser, get_current_user
+from app.services.threads import get_or_create_thread, list_user_threads
+from app.services.checkpointer import get_checkpointer
+from app.services.input_guard import is_prompt_injection
+from app.services.output_guard import register_prompts
+from app.agents.health_agent import HEALTH_SYSTEM_PROMPT
+from app.agents.productivity_agent import PRODUCTIVITY_SYSTEM_PROMPT
 from app.graph.graph import build_assist_graph
 from app.graph.state import AssistantState
 from app.memory.memory import retrieve_memories
-from app.services.threads import get_or_create_thread, list_user_threads
 from app.memory.memory import store_memory
-from app.services.checkpointer import get_checkpointer
 from app.database.db import (
     db_habit_tool,
     db_log_meal,
@@ -24,10 +29,16 @@ from app.database.db import (
     db_log_workout,
     db_reflection_tool,
     db_task_tool,
+    increment_daily_usage
 )
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    register_prompts(
+        HEALTH_SYSTEM_PROMPT.content, #type: ignore
+        PRODUCTIVITY_SYSTEM_PROMPT.content, #type: ignore
+    )
+
     async with get_checkpointer() as checkpointer:
         app.state.graph = build_assist_graph(checkpointer)
         yield
@@ -37,6 +48,26 @@ app = FastAPI(
     title="Nexus Personal Chief of Staff",
     lifespan=lifespan,
 )
+
+DAILY_USAGE_LIMIT_ENABLED = (
+    os.getenv("DAILY_USAGE_LIMIT_ENABLED", "false").lower()=="true"
+    )
+DAILY_USAGE_LIMIT = int(os.getenv("DAILY_USAGE_LIMIT", "15"))
+
+# TO ENFORCE DAILY USAGE LIMIT
+async def enforce_daily_usage(user_id: int) -> None:
+    if not DAILY_USAGE_LIMIT_ENABLED:
+        return
+    request_count = await asyncio.to_thread(
+        increment_daily_usage,
+        user_id
+    )
+
+    if request_count > DAILY_USAGE_LIMIT:
+        raise HTTPException(
+            status_code=429,
+            detail="Daily usage limit reached. Please try again tomorrow.",
+        )
 
 @app.get("/health")
 def helth_check():
@@ -128,6 +159,16 @@ async def chat(
     fastapi_request: Request,
     current_user: Annotated[AuthenticatedUser, Depends(get_current_user)]
 ):
+    await enforce_daily_usage(current_user.user_id)
+
+    if is_prompt_injection(request.message):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "SORRY! YOUR REQUEST DOESN'T SEEMS APPROPRIATE!"
+            )
+        )
+
     thread_id = await get_or_create_thread(
         user_id=current_user.user_id,
         thread_id=request.thread_id,
@@ -140,7 +181,10 @@ async def chat(
 
     result = await fastapi_request.app.state.graph.ainvoke( #graph with checkpointer(thread ids)
         initial_state,
-        config={"configurable": {"thread_id": str(thread_id),}}
+        config={
+            "configurable": {"thread_id": str(thread_id),},
+            "recursion_limit": 15   ,
+            }
     )
 
     return ChatResponse(
@@ -299,14 +343,14 @@ async def create_log(
         "reflection": "reflections",
     }[payload.type]
 
-    source_id = result[0].get("id") if result else None
+    source_id = result[0].get("id") if result else None #type:ignore
 
     if source_id is not None:
         await asyncio.to_thread(
             store_memory,
             user_id=user_id,
             source_type=source_type,
-            source_id=source_id,
+            source_id=source_id, #type:ignore
             content=json.dumps(
                 payload.model_dump(mode="json")
             ),

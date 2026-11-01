@@ -1,12 +1,13 @@
 from app.graph.state import AssistantState
 from app.graph.subgraph_state import HealthState, ProductivityState
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate
 from app.graph.routing import route, get_llm    
 from app.agents.health_agent import get_health_agent, HEALTH_SYSTEM_PROMPT
 from app.agents.productivity_agent import get_productivity_agent, PRODUCTIVITY_SYSTEM_PROMPT
 
 from app.graph.history import build_clean_history, build_domain_history
+from app.services.output_guard import filter_sensitive_output
 
 def route_node(state: AssistantState):
     request_type = route(state)
@@ -54,11 +55,45 @@ def reset_results(state: AssistantState):
         "final_response": "",
     }
 
+def general_node(state: AssistantState):
+    user_message = next(
+        (
+            message
+            for message in reversed(state.messages)
+            if isinstance(message, HumanMessage)
+        ),
+        HumanMessage(content=""),
+    )
+
+    prompt = SystemMessage(content="""
+You are Nexus, a personal Chief of Staff.
+
+Answer general conversation and app capability questions.
+
+Do not retrieve user data.
+Do not call tools.
+Do not claim that you checked records.
+Keep the response friendly and under three short sentences.
+
+When asked what Nexus can do, explain that it can help log and review
+health, tasks, habits, and reflections.
+""")
+
+    response = get_llm().invoke([prompt, user_message])
+    answer = filter_sensitive_output(str(response.content))
+
+    return {
+        "final_response": answer,
+        "messages": [AIMessage(content=answer)],
+    }
+
 def finalize_single_domain(state: AssistantState):
     if state.request_type == "health":
         answer = state.health_result
     else:
         answer = state.productivity_result
+
+    answer = filter_sensitive_output(str(answer))
 
     return {
         "final_response": answer,
@@ -113,6 +148,8 @@ Rules:
     # Ensure the final response is text.
     if not isinstance(answer, str):
         answer = str(answer)
+        
+    answer = filter_sensitive_output(answer)
 
     return {
         "final_response": answer,

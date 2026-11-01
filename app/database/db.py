@@ -174,3 +174,15 @@ def db_reflection_tool(
 
     result = supabase.table("reflections").insert(data).execute()
     return result.data
+
+#--------------------------------------- Daily Useage --------------------------------------------
+def increment_daily_usage(user_id: int) -> int:
+    result = supabase.rpc(
+        "increment_daily_usage",
+        {"p_user_id": user_id}
+    ).execute()
+
+    if result.data is None: #type:ignore
+        raise RuntimeError("Daily usage counter did not return a value")
+
+    return result.data #type:ignore
